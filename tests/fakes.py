@@ -2,11 +2,22 @@
 
 from __future__ import annotations
 
-import fnmatch
 import json
+import re
 from datetime import date, datetime, timedelta, timezone
 
 from gq_bot.llm import LLMReply, ToolCall
+
+
+def like_to_regex(pattern):
+    """SQL LIKE semantics: % = any run, _ = any one char, backslash escapes."""
+    out, i = [], 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\" and i + 1 < len(pattern):
+            out.append(re.escape(pattern[i + 1])); i += 2; continue
+        out.append(".*" if ch == "%" else "." if ch == "_" else re.escape(ch)); i += 1
+    return "".join(out)
 
 
 class _Res:
@@ -24,7 +35,10 @@ class Query:
     def in_(self, c, vs): s = {str(v) for v in vs}; self.filters.append(lambda r: str(r.get(c)) in s); return self
     def gte(self, c, v): self.filters.append(lambda r: r.get(c) is not None and str(r.get(c)) >= str(v)); return self
     def contains(self, c, vs): self.filters.append(lambda r: set(vs) <= set(r.get(c) or [])); return self
-    def ilike(self, c, p): self.filters.append(lambda r: fnmatch.fnmatch(str(r.get(c) or "").lower(), p.lower().replace("%", "*"))); return self
+    def ilike(self, c, p):
+        rx = re.compile(like_to_regex(p), re.IGNORECASE | re.DOTALL)
+        self.filters.append(lambda r: rx.fullmatch(str(r.get(c) or "")) is not None)
+        return self
     def order(self, c, desc=False): self._order = (c, desc); return self
     def limit(self, n): self._limit = n; return self
     def range(self, a, b): self._range = (a, b); return self

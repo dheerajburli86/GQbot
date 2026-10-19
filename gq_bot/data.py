@@ -114,8 +114,16 @@ class GQData:
         rows = self._rows(self.fx.table("users").select("id, telegram_username, is_active")
                           .eq("telegram_chat_id", str(chat_id)).limit(1))
         if not rows and username:
-            rows = self._rows(self.fx.table("users").select("id, telegram_username, is_active")
-                              .ilike("telegram_username", username.lstrip("@")).limit(1))
+            # ILIKE for case-insensitivity only. `_` and `%` are wildcards in
+            # LIKE, and a Telegram username can contain `_`, so an unescaped
+            # pattern would let "d_12312" match someone else's "dj12312".
+            # Escape them AND confirm an exact match, so this can never resolve
+            # to a different person.
+            wanted = username.lstrip("@").lower()
+            pattern = wanted.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+            rows = [r for r in self._rows(self.fx.table("users").select("id, telegram_username, is_active")
+                                          .ilike("telegram_username", pattern).limit(5))
+                    if (r.get("telegram_username") or "").lstrip("@").lower() == wanted][:1]
         user = rows[0] if rows else None
         if user and user.get("is_active") is False:
             return None

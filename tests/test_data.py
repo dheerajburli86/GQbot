@@ -115,3 +115,13 @@ def test_compare_dedupes_and_caps():
     assert [x["ticker"] for x in r["results"]] == ["AAPL", "MSFT", "QQQ"]
     many = d.compare("u1", list("ABCDEFG"))
     assert len(many["results"]) == 5 and "note" in many
+
+
+def test_username_fallback_cannot_match_another_user_through_a_wildcard():
+    d, *_ = make(fx={"users": [{"id": "victim", "telegram_chat_id": "7", "telegram_username": "dj12312",
+                                "is_active": True},
+                               {"id": "real", "telegram_chat_id": None, "telegram_username": "a_b",
+                                "is_active": True}]})
+    assert d.get_user(999, "d_12312") is None       # `_` must not act as a wildcard
+    assert d.get_user(999, "dj%") is None
+    assert d.get_user(999, "A_B")["id"] == "real"   # a real underscore still matches exactly
