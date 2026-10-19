@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS public.gq_bot_queries (
     id                 BIGSERIAL PRIMARY KEY,
-    user_id            UUID,
+    user_id            TEXT,
     chat_id            TEXT NOT NULL,
     question           TEXT NOT NULL,
     answer             TEXT,
@@ -21,7 +21,6 @@ CREATE INDEX IF NOT EXISTS gq_bot_queries_created_idx ON public.gq_bot_queries (
 CREATE INDEX IF NOT EXISTS gq_bot_queries_user_idx    ON public.gq_bot_queries (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS gq_bot_queries_error_idx   ON public.gq_bot_queries (error) WHERE error IS NOT NULL;
 
--- If users.id is not a UUID in your project, change user_id's type to match.
 
 -- Read-only helpers the bot relies on already exist in FinXray (alerts_ticker_filing_type_idx,
 -- watchlists_ticker_idx). This one makes the per-ticker, newest-first alert read cheap:
