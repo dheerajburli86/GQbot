@@ -111,7 +111,7 @@ class GQData:
         every bot, so the chat id the FinXray bot stored resolves here too. The
         username is the fallback for a user whose row predates chat-id capture.
         """
-        rows = self._rows(self.fx.table("users").select("id, telegram_username, is_active")
+        rows = self._rows(self.fx.table("users").select("id, telegram_username")
                           .eq("telegram_chat_id", str(chat_id)).limit(1))
         if not rows and username:
             # ILIKE for case-insensitivity only. `_` and `%` are wildcards in
@@ -121,13 +121,10 @@ class GQData:
             # to a different person.
             wanted = username.lstrip("@").lower()
             pattern = wanted.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-            rows = [r for r in self._rows(self.fx.table("users").select("id, telegram_username, is_active")
+            rows = [r for r in self._rows(self.fx.table("users").select("id, telegram_username")
                                           .ilike("telegram_username", pattern).limit(5))
                     if (r.get("telegram_username") or "").lstrip("@").lower() == wanted][:1]
-        user = rows[0] if rows else None
-        if user and user.get("is_active") is False:
-            return None
-        return user
+        return rows[0] if rows else None
 
     def watchlist(self, user_id, force: bool = False) -> List[str]:
         if not force:

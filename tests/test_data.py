@@ -8,11 +8,10 @@ def make(**kw):
     return GQData(fx, hm, today=lambda: TODAY), fx, hm
 
 
-def test_user_lookup_by_chat_id_then_username_and_inactive_is_rejected():
+def test_user_lookup_by_chat_id_then_username():
     d, *_ = make()
     assert d.get_user(42)["id"] == "u1"
     assert d.get_user(999, "@LATE")["id"] == "u3"
-    assert d.get_user(43) is None
     assert d.get_user(999) is None
 
 

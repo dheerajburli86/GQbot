@@ -84,9 +84,9 @@ def world(**overrides):
     bars = [{"instrument_id": "i-aapl", "date": (TODAY - timedelta(days=d)).isoformat(), "close": c}
             for d, c in [(6, 200.0), (5, 198.0), (4, 190.0), (3, 185.0), (2, 186.0), (1, 180.0), (0, 181.0)]]
     tables = {
-        "users": [{"id": "u1", "telegram_chat_id": "42", "telegram_username": "dj", "is_active": True},
-                  {"id": "u2", "telegram_chat_id": "43", "telegram_username": "gone", "is_active": False},
-                  {"id": "u3", "telegram_chat_id": None, "telegram_username": "late", "is_active": True}],
+        "users": [{"id": "u1", "telegram_chat_id": "42", "telegram_username": "dj"},
+                  {"id": "u2", "telegram_chat_id": "43", "telegram_username": "gone"},
+                  {"id": "u3", "telegram_chat_id": None, "telegram_username": "late"}],
         "watchlists": [{"user_id": "u1", "ticker": "aapl"}, {"user_id": "u1", "ticker": "QQQ"},
                        {"user_id": "u1", "ticker": "MSFT"}, {"user_id": "u9", "ticker": "TSLA"}],
         "alerts": [
