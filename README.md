@@ -48,7 +48,7 @@ Telegram ──> telegram_app.py ──> agent.py ──(tool calls)──> tool
    step tools are withheld, which forces it to answer.
 4. Only questions and final answers go into short-term memory (6 turns, 30
    minutes), so follow-ups like "and last month?" work.
-5. Every question is logged to `gq_bot_queries`. This is best-effort and never
+5. Every question is logged to `gq_bot_queries` in the bot's own Supabase project. This is best-effort and never
    blocks an answer.
 
 ### Tools
@@ -86,8 +86,11 @@ rather than a crash. Run the CLI with `--trace` after deploying to confirm.
    LLM. The default is DeepInfra `google/gemini-2.5-flash` via the
    OpenAI-compatible API, the same account FinXray uses. Set
    `LLM_PROVIDER=anthropic` for Claude (default model `claude-haiku-5-5`).
-3. **Apply** `migrations/001_gq_bot_query_log.sql` in the FinXray project
-   (optional: skip it and set `GQ_BOT_LOG_QUERIES=false`).
+3. **Create the bot's own Supabase project** (new and empty) and run
+   `migrations/001_gq_bot_query_log.sql` in it. Put its URL and service_role key
+   in `BOT_SUPABASE_URL` / `BOT_SUPABASE_KEY`. FinXray and the heatmap projects
+   are only read, never written. Without these two variables the bot works but
+   does not log.
 4. **Install and test**:
    ```bash
    pip install -r requirements.txt pytest

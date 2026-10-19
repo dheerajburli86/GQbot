@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import logging
+
 from .agent import GQBot
 from .config import Settings, get_settings
 from .data import GQData
-from .db import make_clients
+from .db import make_bot_client, make_clients
 from .llm import make_llm
 from .memory import ConversationMemory
 from .querylog import QueryLog
+
+log = logging.getLogger(__name__)
 
 
 def build_bot(settings: Settings | None = None) -> GQBot:
     s = settings or get_settings()
     fx, hm = make_clients(s)
+    bot_db = make_bot_client(s) if s.log_queries else None
+    if s.log_queries and bot_db is None:
+        log.warning("BOT_SUPABASE_URL / BOT_SUPABASE_KEY not set: question logging is off")
     return GQBot(s, GQData(fx, hm), make_llm(s),
                  memory=ConversationMemory(s.history_turns, s.history_ttl_s),
-                 querylog=QueryLog(fx, s.log_queries))
+                 querylog=QueryLog(bot_db, s.log_queries))

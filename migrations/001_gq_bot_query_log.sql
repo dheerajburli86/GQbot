@@ -1,9 +1,10 @@
--- GQ bot: one row per question. Apply in the FinXray US Supabase project.
--- Optional: with GQ_BOT_LOG_QUERIES=false the bot never touches this table.
+-- GQ bot: question log. Run this in the BOT's own Supabase project (the new
+-- one), NOT in FinXray or the heatmap project: the bot only reads those.
+-- Optional: without BOT_SUPABASE_URL/KEY the bot simply does not log.
 
 CREATE TABLE IF NOT EXISTS public.gq_bot_queries (
     id                 BIGSERIAL PRIMARY KEY,
-    user_id            TEXT,
+    user_id            TEXT,                 -- FinXray users.id, kept as text
     chat_id            TEXT NOT NULL,
     question           TEXT NOT NULL,
     answer             TEXT,
@@ -21,7 +22,7 @@ CREATE INDEX IF NOT EXISTS gq_bot_queries_created_idx ON public.gq_bot_queries (
 CREATE INDEX IF NOT EXISTS gq_bot_queries_user_idx    ON public.gq_bot_queries (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS gq_bot_queries_error_idx   ON public.gq_bot_queries (error) WHERE error IS NOT NULL;
 
-
--- Read-only helpers the bot relies on already exist in FinXray (alerts_ticker_filing_type_idx,
--- watchlists_ticker_idx). This one makes the per-ticker, newest-first alert read cheap:
-CREATE INDEX IF NOT EXISTS alerts_ticker_created_idx ON public.alerts (ticker, created_at DESC);
+-- The bot connects with the service_role key, which bypasses row level
+-- security. Keep RLS ON so the public (anon) key can never read these
+-- questions.
+ALTER TABLE public.gq_bot_queries ENABLE ROW LEVEL SECURITY;

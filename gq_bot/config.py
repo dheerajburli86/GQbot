@@ -53,6 +53,11 @@ class Settings:
     per_minute_limit: int = field(default_factory=lambda: _int("GQ_BOT_PER_MINUTE", 6))
     per_day_limit: int = field(default_factory=lambda: _int("GQ_BOT_PER_DAY", 150))
 
+    # The bot's OWN Supabase project: holds only what the bot writes (the
+    # question log). FinXray and the heatmap are only ever read. Logging is off
+    # until this is set, so nothing is ever written to those two projects.
+    bot_url: str = field(default_factory=lambda: os.getenv("BOT_SUPABASE_URL", ""))
+    bot_key: str = field(default_factory=lambda: os.getenv("BOT_SUPABASE_KEY", ""))
     log_queries: bool = field(default_factory=lambda: _bool("GQ_BOT_LOG_QUERIES", True))
 
     @property

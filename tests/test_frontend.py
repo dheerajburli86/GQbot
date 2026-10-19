@@ -105,3 +105,13 @@ def test_watchlist_command_lists_names():
     up = stub_update("/watchlist")
     asyncio.run(fe.watchlist(up, SimpleNamespace(bot=StubBot())))
     assert "AAPL - Apple Inc (stock)" in up.message.replies[0]
+
+
+def test_logging_is_off_until_the_bots_own_project_is_configured(monkeypatch):
+    from gq_bot.config import Settings
+    from gq_bot.db import make_bot_client
+    monkeypatch.delenv("BOT_SUPABASE_URL", raising=False)
+    monkeypatch.delenv("BOT_SUPABASE_KEY", raising=False)
+    assert make_bot_client(Settings()) is None
+    monkeypatch.setenv("BOT_SUPABASE_URL", "https://x.supabase.co")
+    assert Settings().bot_url == "https://x.supabase.co" and make_bot_client(Settings()) is None  # key still missing
