@@ -1,0 +1,9 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python -m gq_bot"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+# Keep at ONE replica: Telegram long-polling hands each update to one poller.
+numReplicas = 1
