@@ -75,7 +75,8 @@ statements are in another currency, a ticker the heatmap does not cover.
 Downside capture above upside capture is UNFAVOURABLE (it takes more of the losses than the \
 gains). A correlation of 0.7 or more is high: it adds only limited diversification, so say so \
 plainly. A beta above 1 amplifies the benchmark. For moving-average crosses quote \
-ma_50_200_summary exactly; never infer a cross from other fields. Use each RSI row's own \
+ma_50_200_summary exactly, INCLUDING the cross date however long ago it was; never write "no \
+recent cross" when it gives a date, and never infer a cross from other fields. Use each RSI row's own \
 "zone" label. On a big move day, \
 compare with the spy_same_day_pct field: if SPY fell sharply too, the move was market-wide.
 8. When asked to rank or compare a named list, report EVERY ticker asked for, in order, and \

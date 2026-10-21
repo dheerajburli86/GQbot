@@ -123,7 +123,8 @@ def _last_ma_cross(xs: Sequence[float], dates: Sequence[str]) -> Optional[Dict[s
             break
         if (a > b) != (pa > pb):
             return {"type": "golden cross (50-day moved above 200-day)" if a > b
-                    else "death cross (50-day moved below 200-day)", "date": dates[i]}
+                    else "death cross (50-day moved below 200-day)", "date": dates[i],
+                    "sessions_ago": len(xs) - 1 - i}
     return None
 
 
@@ -165,7 +166,8 @@ def technicals(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
         state = ("the 50-day average is ABOVE the 200-day" if mas[50] > mas[200]
                  else "the 50-day average is BELOW the 200-day")
         if cross:
-            when = f"the last cross was a {cross['type'].split(' (')[0]} on {cross['date']}"
+            when = (f"the last cross was a {cross['type'].split(' (')[0]} on {cross['date']} "
+                    f"({cross['sessions_ago']} sessions ago)")
         else:
             when = f"no 50/200 cross in the last {len(xs) - 199} sessions"
         ma_summary = f"{state}; {when}. Quote this as written."
