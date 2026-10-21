@@ -99,3 +99,16 @@ def test_a_plain_reply_without_figures_needs_no_tool():
     b, llm, _ = bot([say("TSLA is not on your watchlist. Add it with /add TSLA.")])
     a = b.answer(42, "how is TSLA")
     assert a.error is None and len(llm.sent) == 1
+
+
+def test_named_tickers_are_found_in_order_without_matching_inside_words():
+    assert A.named_tickers("Rank QQQ, aapl and MSFT; a VOO-like fund", ["MSFT", "AAPL", "QQQ", "A"]) == \
+        ["QQQ", "AAPL", "MSFT"]
+    assert A.named_tickers("compare these", ["QQQ"]) == []
+
+
+def test_a_ranking_of_named_tickers_is_scoped_even_if_the_model_forgets():
+    b, llm, _ = bot([call("rank_watchlist", metric="return_1w"), say("Ranked.")])
+    a = b.answer(42, "rank QQQ, MSFT and AAPL by 1 week return")
+    assert a.tools[0]["args"]["tickers"] == ["QQQ", "MSFT", "AAPL"]
+    assert '"requested":["QQQ","MSFT","AAPL"]' in llm.sent[1]["messages"][-1]["content"]

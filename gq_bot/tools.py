@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable, Dict, List
+from typing import Optional, Any, Callable, Dict, List
 
 from .data import EVENT_CATEGORIES, RANK_METRICS, GQData
 
@@ -150,8 +150,10 @@ def _compact(result: Any) -> str:
 class ToolRunner:
     """Runs tool calls for one user and records what was called."""
 
-    def __init__(self, data: GQData, user_id):
+    def __init__(self, data: GQData, user_id, named: Optional[List[str]] = None):
         self.data, self.user_id = data, user_id
+        # watchlist tickers the user named in the question
+        self.named = list(named or [])
         self.calls: List[Dict[str, Any]] = []
         uid = user_id
         self.images: List[bytes] = []
@@ -208,6 +210,9 @@ class ToolRunner:
         else:
             allowed = fn.__code__.co_varnames[:fn.__code__.co_argcount]
             args = {k: v for k, v in args.items() if k in allowed and v is not None}
+            # A ranking of a named set must not fall back to the watchlist's top 10.
+            if name == "rank_watchlist" and not args.get("tickers") and len(self.named) >= 2:
+                args["tickers"] = self.named
             try:
                 result = fn(**args)
             except TypeError as e:

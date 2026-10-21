@@ -70,6 +70,19 @@ def plain_text(text: str) -> str:
     return text.strip()
 
 
+def named_tickers(question: str, tickers: List[str]) -> List[str]:
+    """Watchlist tickers written out in the question, in the order asked."""
+    q = question or ""
+    hits = []
+    for t in tickers:
+        # short tickers ("A", "IT", "ON") only count when typed in capitals
+        flags = re.I if len(t) >= 3 else 0
+        m = re.search(r"(?<![A-Za-z0-9.$])\$?" + re.escape(t.upper()) + r"(?![A-Za-z0-9])", q, flags)
+        if m:
+            hits.append((m.start(), t.upper()))
+    return [t for _, t in sorted(hits)]
+
+
 def _assistant_msg(reply) -> Dict[str, Any]:
     return {"role": "assistant", "content": reply.content or None,
             "tool_calls": [{"id": c.id, "type": "function",
@@ -114,7 +127,7 @@ class GQBot:
         if not watchlist:
             return Answer(MSG_EMPTY_WATCHLIST, user_id=uid, error="empty_watchlist")
 
-        runner = ToolRunner(self.data, uid)
+        runner = ToolRunner(self.data, uid, named_tickers(question, [w["ticker"] for w in watchlist]))
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt(self.now().strftime("%A %d %B %Y, %H:%M"), watchlist)},
             *self.memory.get(chat_id),
