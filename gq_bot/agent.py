@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -21,6 +22,7 @@ from .tools import TOOLS, ToolRunner
 log = logging.getLogger(__name__)
 
 ET = ZoneInfo("America/New_York")
+BUILD = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or "local")[:7]
 MAX_QUESTION_CHARS = 1000
 
 MSG_UNKNOWN_USER = ("I couldn't find your GQ FinXray account. Open the GQ FinXray bot, send /start "
@@ -161,7 +163,7 @@ class GQBot:
             "user_id": ans.user_id, "chat_id": str(chat_id), "question": question,
             "answer": ans.text, "tools_used": ans.tools, "tickers": ans.tickers,
             "prompt_tokens": ans.prompt_tokens, "completion_tokens": ans.completion_tokens,
-            "latency_ms": ans.latency_ms, "model": self.s.model, "error": ans.error})
+            "latency_ms": ans.latency_ms, "model": f"{self.s.model}@{BUILD}", "error": ans.error})
         return ans
 
     def _answer(self, chat_id, question: str, username: Optional[str]) -> Answer:

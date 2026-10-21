@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import List
 
 from telegram import LinkPreviewOptions, Update
@@ -67,6 +68,10 @@ def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> List[str]:
     return parts or [""]
 
 
+# Railway sets RAILWAY_GIT_COMMIT_SHA on every deploy; /version shows which build answers.
+BUILD = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or "local")[:7]
+
+
 class TelegramFrontEnd:
     def __init__(self, bot: GQBot, limiter: RateLimiter):
         self.bot, self.limiter = bot, limiter
@@ -87,6 +92,10 @@ class TelegramFrontEnd:
         if self._private(update):
             self.bot.reset(update.effective_chat.id)
             await update.message.reply_text("Fresh start. What would you like to know?")
+
+    async def version(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        if self._private(update):
+            await update.message.reply_text(f"GQ bot build {BUILD} (model {self.bot.s.model})")
 
     async def watchlist(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not self._private(update):
@@ -174,6 +183,7 @@ def build_application(bot: GQBot, token: str, limiter: RateLimiter) -> Applicati
     app.add_handler(CommandHandler("help", fe.help))
     app.add_handler(CommandHandler("reset", fe.reset))
     app.add_handler(CommandHandler("watchlist", fe.watchlist))
+    app.add_handler(CommandHandler("version", fe.version))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fe.question))
     app.add_error_handler(fe.on_error)
     return app
@@ -188,7 +198,7 @@ def main() -> None:
         raise SystemExit("GQ_BOT_TELEGRAM_TOKEN is not set")
     bot = build_bot(s)
     app = build_application(bot, s.telegram_token, RateLimiter(s.per_minute_limit, s.per_day_limit))
-    log.info("[tg] GQ bot starting (provider=%s model=%s)", s.llm_provider, s.model)
+    log.info("[tg] GQ bot starting build=%s (provider=%s model=%s)", BUILD, s.llm_provider, s.model)
     # run_polling owns the event loop; do not wrap it in asyncio.run().
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
