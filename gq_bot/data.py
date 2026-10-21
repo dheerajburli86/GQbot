@@ -544,10 +544,16 @@ class GQData:
 
     # ── technicals + risk ─────────────────────────────────────────────────────
     def _gq_signals(self, inst_id) -> Dict[str, Any]:
+        # The table holds one row per timeframe (D/W/M/Q/Y); a daily setup reads the daily row only.
         rows = self._rows(self.hm.table("tech_trend_identification").select("*")
-                          .eq("instrument_id", inst_id).limit(4))
-        drop = {"instrument_id", "symbol", "name", "universe", "market_cap_usd", "id", "created_at", "updated_at"}
-        return [{k: v for k, v in r.items() if k not in drop and v not in (None, "")} for r in rows]
+                          .eq("instrument_id", inst_id).eq("timeframe", "D").limit(1))
+        drop = {"instrument_id", "symbol", "name", "universe", "market_cap_usd", "id", "created_at",
+                "updated_at", "timeframe", "isin"}
+        out = [{k: v for k, v in r.items() if k not in drop and v not in (None, "")} for r in rows]
+        for r in out:
+            r["note"] = ("GQ dashboard daily STATES only, as of the as_of date. They carry no cross "
+                         "dates; dates come from last_50_200_cross / ma_50_200_summary.")
+        return out
 
     def technicals(self, user_id, ticker: str) -> Dict[str, Any]:
         t, no = self._scoped(user_id, ticker)

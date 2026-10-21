@@ -39,6 +39,47 @@ NUDGE_NO_TOOLS = ("You answered with figures but called no tool in this turn. Ea
 _FIGURE = re.compile(r"\d+(?:\.\d+)?\s?%|\$\s?\d|\b\d+\.\d+\b|\b\d+(?:\.\d+)?x\b")
 
 
+_MON = {m: i for i, m in enumerate(
+    ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+_MNAME = r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?"
+_ISO = re.compile(r"\b(20\d\d)-(\d\d)-(\d\d)")
+_MDY = re.compile(_MNAME + r"\s+(\d{1,2})(?:st|nd|rd|th)?,?\s+(20\d\d)\b", re.I)
+_DMY = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)?\s+" + _MNAME + r",?\s+(20\d\d)\b", re.I)
+NUDGE_DATES = ("These dates in your answer appear in no tool result from this turn: {dates}. Every "
+               "date must come from a tool result. Remove or correct them and answer again.")
+
+
+def dates_in(text: str) -> Dict[str, List[str]]:
+    """Calendar dates written in the text, as ISO -> the spellings used."""
+    found: Dict[str, List[str]] = {}
+
+    def add(y, m, d, raw):
+        try:
+            iso = datetime(int(y), int(m), int(d)).date().isoformat()
+        except ValueError:
+            return
+        found.setdefault(iso, []).append(raw)
+    for m in _ISO.finditer(text or ""):
+        add(m.group(1), m.group(2), m.group(3), m.group(0))
+    for m in _MDY.finditer(text or ""):
+        add(m.group(3), _MON[m.group(1)[:3].lower()], m.group(2), m.group(0))
+    for m in _DMY.finditer(text or ""):
+        add(m.group(3), _MON[m.group(2)[:3].lower()], m.group(1), m.group(0))
+    return found
+
+
+def ungrounded_dates(text: str, sources: List[str]) -> Dict[str, List[str]]:
+    known = set()
+    for src in sources:
+        known |= set(dates_in(src))
+    return {d: raw for d, raw in dates_in(text).items() if d not in known}
+
+
+def drop_lines_with(text: str, spellings: List[str]) -> str:
+    keep = [ln for ln in text.splitlines() if not any(s in ln for s in spellings)]
+    return "\n".join(keep).strip()
+
+
 def has_figures(text: str) -> bool:
     """Percentages, money, decimals or multiples: the things that must come from a tool."""
     return bool(_FIGURE.search(text or ""))
@@ -135,7 +176,9 @@ class GQBot:
         ]
         ptok = ctok = 0
         text, error = "", None
-        nudged = False
+        nudged = dates_nudged = False
+        today = self.now()
+        allowed = [question, today.date().isoformat()]
         try:
             for step in range(self.s.max_tool_steps + 1):
                 # The last step withholds tools so the model has to answer.
@@ -157,6 +200,13 @@ class GQBot:
                     messages.append({"role": "assistant", "content": text})
                     messages.append({"role": "user", "content": NUDGE_NO_TOOLS})
                     continue
+                bad = ungrounded_dates(text, runner.outputs + allowed) if runner.calls else {}
+                if bad and tools and not dates_nudged:
+                    dates_nudged = True
+                    log.warning("[agent] ungrounded dates %s; nudging", sorted(bad))
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append({"role": "user", "content": NUDGE_DATES.format(dates=", ".join(sorted(bad)))})
+                    continue
                 break
         except LLMError as e:
             log.error("[agent] %s", e)
@@ -164,6 +214,11 @@ class GQBot:
                           prompt_tokens=ptok, completion_tokens=ctok, error=str(e))
 
         text = plain_text(text or "")
+        bad = ungrounded_dates(text, runner.outputs + allowed) if runner.calls else {}
+        if bad:
+            log.error("[agent] removing lines with ungrounded dates %s", sorted(bad))
+            text = drop_lines_with(text, [r for raws in bad.values() for r in raws])
+            error = "ungrounded_dates_removed"
         if text and not runner.calls and has_figures(text):
             log.error("[agent] refused an ungrounded answer")
             text, error = MSG_UNGROUNDED, "ungrounded_figures"

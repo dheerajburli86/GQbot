@@ -155,6 +155,7 @@ class ToolRunner:
         # watchlist tickers the user named in the question
         self.named = list(named or [])
         self.calls: List[Dict[str, Any]] = []
+        self.outputs: List[str] = []      # what the model was shown, for the grounding checks
         uid = user_id
         self.images: List[bytes] = []
         d = data
@@ -226,4 +227,6 @@ class ToolRunner:
             result = {k: v for k, v in result.items() if k != "_image"}
         self.calls.append({"name": name, "args": args,
                            "ok": bool(result.get("ok")) if isinstance(result, dict) else True})
-        return _compact(result)
+        out = _compact(result)
+        self.outputs.append(out)
+        return out

@@ -112,3 +112,23 @@ def test_a_ranking_of_named_tickers_is_scoped_even_if_the_model_forgets():
     a = b.answer(42, "rank QQQ, MSFT and AAPL by 1 week return")
     assert a.tools[0]["args"]["tickers"] == ["QQQ", "MSFT", "AAPL"]
     assert '"requested":["QQQ","MSFT","AAPL"]' in llm.sent[1]["messages"][-1]["content"]
+
+
+def test_dates_are_read_in_every_common_spelling():
+    got = A.dates_in("on 2026-09-21, May 6, 2026, 6th May 2026 and Oct. 20 2026; not Feb 30, 2026")
+    assert set(got) == {"2026-09-21", "2026-05-06", "2026-10-20"}
+
+
+def test_an_invented_date_is_nudged_then_removed():
+    b, llm, _ = bot([call("get_technicals", ticker="MSFT"),
+                     say("- RSI is neutral.\n- Death cross on 2026-09-21."),
+                     say("- RSI is neutral.\n- Death cross on September 21, 2026.")])
+    a = b.answer(42, "technicals on MSFT")
+    assert "2026-09-21" in llm.sent[2]["messages"][-1]["content"]
+    assert a.text == "- RSI is neutral." and a.error == "ungrounded_dates_removed"
+
+
+def test_dates_from_the_tool_or_the_question_pass():
+    b, llm, _ = bot([call("get_technicals", ticker="MSFT"), say("MSFT closed on its as-of date. Since March 10, 2025 it rose.")])
+    a = b.answer(42, "how has MSFT done since March 10, 2025?")
+    assert a.error is None and len(llm.sent) == 2
