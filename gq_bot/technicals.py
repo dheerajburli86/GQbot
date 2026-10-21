@@ -52,6 +52,12 @@ def rsi(xs: Sequence[float], n: int = 14) -> Optional[float]:
     return round(100 - 100 / (1 + ag / al), 2)
 
 
+def rsi_zone(r: Optional[float]) -> Optional[str]:
+    if r is None:
+        return None
+    return "overbought (>70)" if r > 70 else "oversold (<30)" if r < 30 else "neutral (30-70)"
+
+
 def macd(xs: Sequence[float]) -> Optional[Dict[str, Any]]:
     if len(xs) < 35:
         return None
@@ -154,6 +160,17 @@ def technicals(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
         trend = "not enough history for a trend read"
     r = rsi(xs)
     recent = xs[-63:]
+    cross = _last_ma_cross(xs, dates)
+    if mas[50] and mas[200]:
+        state = ("the 50-day average is ABOVE the 200-day" if mas[50] > mas[200]
+                 else "the 50-day average is BELOW the 200-day")
+        if cross:
+            when = f"the last cross was a {cross['type'].split(' (')[0]} on {cross['date']}"
+        else:
+            when = f"no 50/200 cross in the last {len(xs) - 199} sessions"
+        ma_summary = f"{state}; {when}. Quote this as written."
+    else:
+        ma_summary = "not enough history for a 50/200-day comparison"
     return {
         "ok": True,
         "as_of": dates[-1], "close": round(px, 4), "sessions_used": len(xs),
@@ -162,12 +179,11 @@ def technicals(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
         "price_vs_ma_pct": {f"vs_sma_{n}": round((px / m - 1) * 100, 2) if m else None for n, m in mas.items()},
         **above,
         "sma_50_above_sma_200": (mas[50] > mas[200]) if mas[50] and mas[200] else None,
-        "last_50_200_cross": _last_ma_cross(xs, dates) or (
-            {"type": "none found", "searched_sessions": max(len(xs) - 199, 0),
-             "note": "no 50/200-day cross in the history searched; the current state is sma_50_above_sma_200"}
-            if len(xs) >= 200 else None),
+        "last_50_200_cross": cross or (
+            {"type": "none found", "searched_sessions": max(len(xs) - 199, 0)} if len(xs) >= 200 else None),
+        "ma_50_200_summary": ma_summary,
         "rsi_14": r,
-        "rsi_zone": None if r is None else "overbought (>70)" if r > 70 else "oversold (<30)" if r < 30 else "neutral",
+        "rsi_zone": rsi_zone(r),
         "macd": macd(xs),
         "range_52w": {"high": round(hi, 4), "high_date": hi_date, "low": round(lo, 4), "low_date": lo_date,
                       "pct_below_high": round((px / hi - 1) * 100, 2),

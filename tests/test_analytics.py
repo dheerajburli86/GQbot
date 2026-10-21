@@ -163,8 +163,10 @@ def test_a_real_cross_is_dated():
     xs = [200 - i for i in range(260)] + [-60 + 3 * i for i in range(1, 200)]
     bars = [{"date": (TODAY - timedelta(days=len(xs) - i)).isoformat(), "close": 100 + x}
             for i, x in enumerate(xs)]
-    c = tech.technicals(bars)["last_50_200_cross"]
+    t = tech.technicals(bars)
+    c = t["last_50_200_cross"]
     assert c["type"].startswith("golden cross") and c["date"] > bars[260]["date"]
+    assert t["ma_50_200_summary"].startswith("the 50-day average is ABOVE") and c["date"] in t["ma_50_200_summary"]
 
 
 def test_rank_named_tickers_returns_all_of_them_and_only_them():
@@ -176,7 +178,9 @@ def test_rank_named_tickers_returns_all_of_them_and_only_them():
 
 
 def test_rank_rsi_carries_the_zone_rule():
-    assert "above 70" in make().rank_watchlist("u1", "rsi_14")["rsi_zones"]
+    r = make().rank_watchlist("u1", "rsi_14")
+    assert "above 70" in r["rsi_zones"] and all(x["zone"] for x in r["ranked"])
+    assert tech.rsi_zone(69.24).startswith("neutral") and tech.rsi_zone(70.58).startswith("overbought")
 
 
 def test_key_sessions_carry_the_market_move_the_same_day():

@@ -874,7 +874,8 @@ class GQData:
             ranked = sorted(((t, v) for t, v in values.items() if v is not None),
                             key=lambda x: x[1], reverse=(order != "asc"))
             out = {"ok": bool(ranked), "metric": metric, "order": order,
-                   "ranked": [{"rank": n + 1, "ticker": t, "name": insts[t].get("name"), "value": v}
+                   "ranked": [{"rank": n + 1, "ticker": t, "name": insts[t].get("name"), "value": v,
+                               **({"zone": tech.rsi_zone(v)} if metric == "rsi_14" else {})}
                               for n, (t, v) in enumerate(ranked[:limit])],
                    "count_with_data": len(ranked), "count_considered": len(insts),
                    "no_data": [t for t in insts if values.get(t) is None][:20]}

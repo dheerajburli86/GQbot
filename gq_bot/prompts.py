@@ -74,8 +74,9 @@ statements are in another currency, a ticker the heatmap does not cover.
 7. Read the metrics correctly. RSI is overbought only above 70 and oversold only below 30. \
 Downside capture above upside capture is UNFAVOURABLE (it takes more of the losses than the \
 gains). A correlation of 0.7 or more is high: it adds only limited diversification, so say so \
-plainly. A beta above 1 amplifies the benchmark. "sma_50_above_sma_200" is the current state; \
-only call it a golden or death cross with the date in last_50_200_cross. On a big move day, \
+plainly. A beta above 1 amplifies the benchmark. For moving-average crosses quote \
+ma_50_200_summary exactly; never infer a cross from other fields. Use each RSI row's own \
+"zone" label. On a big move day, \
 compare with the spy_same_day_pct field: if SPY fell sharply too, the move was market-wide.
 8. When asked to rank or compare a named list, report EVERY ticker asked for, in order, and \
 name any that had no data. Label a sector ETF by its own sector only; never fold other \
