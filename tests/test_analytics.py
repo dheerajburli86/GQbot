@@ -62,7 +62,7 @@ def test_rsi_and_trend_on_known_series():
     t = tech.technicals(up)
     assert t["rsi_14"] == 100.0 and t["trend"].startswith("uptrend")
     assert t["range_52w"]["pct_below_high"] == 0.0 and t["above_sma_200"] is True
-    assert t["last_50_200_cross"] is None
+    assert t["last_50_200_cross"]["type"] == "none found" and t["sma_50_above_sma_200"] is True
     dn = [{"date": b["date"], "close": 500 - i} for i, b in enumerate(up)]
     assert tech.technicals(dn)["trend"].startswith("downtrend")
     assert tech.technicals(up[:10])["reason"] == "not_enough_history"
@@ -157,3 +157,38 @@ def test_chart_tool_returns_an_image_that_the_runner_lifts_out():
     assert out["ok"] and out["charted"] == ["MSFT", "SPY"] and "_image" not in out
     assert out["refused"][0]["reason"] == "not_on_watchlist"
     assert len(r.images) == 1 and r.images[0][:8] == b"\x89PNG\r\n\x1a\n"
+
+
+def test_a_real_cross_is_dated():
+    xs = [200 - i for i in range(260)] + [-60 + 3 * i for i in range(1, 200)]
+    bars = [{"date": (TODAY - timedelta(days=len(xs) - i)).isoformat(), "close": 100 + x}
+            for i, x in enumerate(xs)]
+    c = tech.technicals(bars)["last_50_200_cross"]
+    assert c["type"].startswith("golden cross") and c["date"] > bars[260]["date"]
+
+
+def test_rank_named_tickers_returns_all_of_them_and_only_them():
+    r = make().rank_watchlist("u1", "return_1w", tickers=["qqq", "MSFT", "AAPL", "TSLA"])
+    got = [x["ticker"] for x in r["ranked"]]
+    assert set(got) == {"QQQ", "MSFT", "AAPL"} and r["ranked"][0]["rank"] == 1
+    assert r["not_on_watchlist"] == ["TSLA"]
+    assert make().rank_watchlist("u1", "return_1w", tickers=["TSLA"])["reason"] == "not_on_watchlist"
+
+
+def test_rank_rsi_carries_the_zone_rule():
+    assert "above 70" in make().rank_watchlist("u1", "rsi_14")["rsi_zones"]
+
+
+def test_key_sessions_carry_the_market_move_the_same_day():
+    ks = make().explain_move("u1", "MSFT", days=200)["key_sessions"]
+    days = ks["biggest_down_days"] + ks["biggest_up_days"]
+    hit = [m for m in days if "spy_same_day_pct" in m]
+    assert hit and hit[0]["date"] == "2026-10-14" and hit[0]["spy_same_day_pct"] == -0.18
+    # sessions with no SPY bar get no figure rather than an invented one
+    assert all("spy_same_day_pct" not in m for m in days if m["date"] < "2026-10-01")
+
+
+def test_markdown_is_stripped_for_telegram():
+    from gq_bot.agent import plain_text
+    out = plain_text("## Head\n**VTV** is cheaper.\n* one\n  * two\n- three")
+    assert out == "Head\nVTV is cheaper.\n- one\n  - two\n- three"

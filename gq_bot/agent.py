@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -43,6 +44,19 @@ class Answer:
     latency_ms: int = 0
     error: Optional[str] = None
     images: List[bytes] = field(default_factory=list)
+
+
+_BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__", re.S)
+_BULLET = re.compile(r"^(\s*)[*•]\s+", re.M)
+_HEADING = re.compile(r"^\s*#{1,6}\s*", re.M)
+
+
+def plain_text(text: str) -> str:
+    """Telegram is sent without a parse mode, so markdown would show as literal symbols."""
+    text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
+    text = _BULLET.sub(lambda m: m.group(1) + "- ", text)
+    text = _HEADING.sub("", text)
+    return text.strip()
 
 
 def _assistant_msg(reply) -> Dict[str, Any]:
@@ -117,6 +131,7 @@ class GQBot:
             return Answer(MSG_LLM_DOWN, user_id=uid, tools=runner.calls, tickers=runner.tickers,
                           prompt_tokens=ptok, completion_tokens=ctok, error=str(e))
 
+        text = plain_text(text or "")
         if not text:
             text, error = MSG_NO_ANSWER, "empty_answer"
         else:

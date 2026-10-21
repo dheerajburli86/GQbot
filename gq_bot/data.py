@@ -49,7 +49,8 @@ MAX_HISTORY_DAYS = 3650
 MAX_COMPARE = 5
 CHUNK = 100
 PAGE = 1000
-TECH_LOOKBACK_DAYS = 560          # ~385 sessions: enough for a 200-day average and a 52-week range
+TECH_LOOKBACK_DAYS = 1100         # ~755 sessions: a 200-day average with ~2 years of cross history
+RANK_TECH_DAYS = 560              # rankings only need RSI / 200-day / 52-week, so a shorter read
 PEERS = 10
 
 INST_COLS = ("id, symbol, name, universe, sector, industry, market_cap_usd, "
@@ -692,8 +693,19 @@ class GQData:
         # The biggest sessions, each with the events dated within a day before it.
         if len(bars) >= 2:
             big = tech.biggest_moves(bars, 3)
+
+            def market_days():
+                m = self._instrument(MARKET_BENCHMARK)
+                if not m or t == MARKET_BENCHMARK:
+                    return {}
+                mb = self._bars(m["id"], start=date.fromisoformat(bars[0]["date"]) - timedelta(days=7), end=end)
+                return {b["date"]: round((b["close"] / p["close"] - 1) * 100, 2)
+                        for p, b in zip(mb, mb[1:]) if p.get("close") and b.get("close") is not None}
+            spy_day = self._safe("market day moves", market_days, default={}) or {}
             for side in big.values():
                 for m in side:
+                    if m["date"] in spy_day:
+                        m[f"{MARKET_BENCHMARK.lower()}_same_day_pct"] = spy_day[m["date"]]
                     d = date.fromisoformat(m["date"])
                     m["events_near"] = [ev["summary"] for ev in events
                                         if ev.get("when") and timedelta(0) <= d - date.fromisoformat(str(ev["when"])[:10])
@@ -792,16 +804,28 @@ class GQData:
         return self._safe("watchlist overview", run)
 
     def rank_watchlist(self, user_id, metric: str, order: str = "desc", limit: int = 10,
-                       type_filter: Optional[str] = None) -> Dict[str, Any]:
-        """Rank the user's watchlist by any supported metric."""
+                       type_filter: Optional[str] = None,
+                       tickers: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Rank the user's watchlist, or just the tickers named, by any supported metric."""
         metric = (metric or "").lower()
         kind = RANK_METRICS.get(metric)
         if not kind:
             return {"ok": False, "reason": "unknown_metric", "supported": sorted(RANK_METRICS)}
-        limit = max(1, min(int(limit or 10), 30))
+        wanted: List[str] = []
+        refused: List[str] = []
+        for raw in tickers or []:
+            t, no = self._scoped(user_id, raw)
+            if no:
+                refused.append(str(raw).upper())
+            elif t not in wanted:
+                wanted.append(t)
+        if tickers and not wanted:
+            return {"ok": False, "reason": "not_on_watchlist", "tickers": refused}
+        # a named set is ranked in full; the whole watchlist is cut to the top N
+        limit = len(wanted) if wanted else max(1, min(int(limit or 10), 30))
 
         def run():
-            insts = self._instruments_for(self.watchlist(user_id))
+            insts = self._instruments_for(wanted or self.watchlist(user_id))
             if type_filter in ("stock", "etf"):
                 want = "us_etfs" if type_filter == "etf" else "us_stocks"
                 insts = {t: i for t, i in insts.items() if i.get("universe") == want}
@@ -817,7 +841,7 @@ class GQData:
             elif kind == "tech":
                 def one(item):
                     t, i = item
-                    tr = tech.technicals(self._bars(i["id"], days=TECH_LOOKBACK_DAYS))
+                    tr = tech.technicals(self._bars(i["id"], days=RANK_TECH_DAYS))
                     if not tr.get("ok"):
                         return t, None
                     return t, {"rsi_14": tr["rsi_14"], "pct_below_52w_high": tr["range_52w"]["pct_below_high"],
@@ -849,10 +873,18 @@ class GQData:
                                              "debt_to_equity": a["balance_sheet"]["debt_to_equity"]}[metric]
             ranked = sorted(((t, v) for t, v in values.items() if v is not None),
                             key=lambda x: x[1], reverse=(order != "asc"))
-            return {"ok": bool(ranked), "metric": metric, "order": order,
-                    "ranked": [{"ticker": t, "name": insts[t].get("name"), "value": v} for t, v in ranked[:limit]],
-                    "count_with_data": len(ranked), "count_considered": len(insts),
-                    "no_data": [t for t in insts if values.get(t) is None][:20]}
+            out = {"ok": bool(ranked), "metric": metric, "order": order,
+                   "ranked": [{"rank": n + 1, "ticker": t, "name": insts[t].get("name"), "value": v}
+                              for n, (t, v) in enumerate(ranked[:limit])],
+                   "count_with_data": len(ranked), "count_considered": len(insts),
+                   "no_data": [t for t in insts if values.get(t) is None][:20]}
+            if wanted:
+                out["requested"] = wanted
+                out["not_covered"] = [t for t in wanted if t not in insts]
+                out["not_on_watchlist"] = refused
+            if metric == "rsi_14":
+                out["rsi_zones"] = "overbought only above 70, oversold only below 30, otherwise neutral"
+            return out
         return self._safe("watchlist ranking", run)
 
     # ── charts ────────────────────────────────────────────────────────────────

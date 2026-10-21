@@ -161,7 +161,11 @@ def technicals(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
         "moving_averages": {f"sma_{n}": round(m, 4) if m else None for n, m in mas.items()},
         "price_vs_ma_pct": {f"vs_sma_{n}": round((px / m - 1) * 100, 2) if m else None for n, m in mas.items()},
         **above,
-        "last_50_200_cross": _last_ma_cross(xs, dates),
+        "sma_50_above_sma_200": (mas[50] > mas[200]) if mas[50] and mas[200] else None,
+        "last_50_200_cross": _last_ma_cross(xs, dates) or (
+            {"type": "none found", "searched_sessions": max(len(xs) - 199, 0),
+             "note": "no 50/200-day cross in the history searched; the current state is sma_50_above_sma_200"}
+            if len(xs) >= 200 else None),
         "rsi_14": r,
         "rsi_zone": None if r is None else "overbought (>70)" if r > 70 else "oversold (<30)" if r < 30 else "neutral",
         "macd": macd(xs),

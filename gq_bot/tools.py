@@ -100,12 +100,17 @@ TOOLS: List[Dict[str, Any]] = [
                     "default": "1d"}}, []),
     _fn("rank_watchlist",
         "Rank the watchlist by a metric, e.g. best performers this year, cheapest by P/E, highest "
-        "dividend yield, most oversold (RSI), furthest below 52-week high, fastest revenue growth.",
+        "dividend yield, most oversold (RSI), furthest below 52-week high, fastest revenue growth. "
+        "When the user names specific tickers (e.g. the sector ETFs), pass them in 'tickers': only "
+        "those are ranked and ALL of them are returned. Call once per metric.",
         {"metric": {"type": "string", "enum": sorted(RANK_METRICS)},
          "order": {"type": "string", "enum": ["desc", "asc"], "default": "desc",
                    "description": "desc = highest first."},
          "limit": {"type": "integer", "default": 10},
-         "type_filter": {"type": "string", "enum": ["stock", "etf"]}}, ["metric"]),
+         "type_filter": {"type": "string", "enum": ["stock", "etf"]},
+         "tickers": {"type": "array", "items": {"type": "string"}, "maxItems": 30,
+                     "description": "Rank only these watchlist tickers; omit to rank the whole watchlist."}},
+        ["metric"]),
     _fn("price_chart",
         "Draw a price chart and send it to the user as an image: one ticker with its 50/200-day "
         "averages, or up to 5 tickers rebased to 100 for comparison. Use whenever the user asks "
@@ -169,8 +174,8 @@ class ToolRunner:
                 d.events(uid, ticker, days, min_impact, category, start_date, end_date),
             "compare_tickers": lambda tickers: d.compare(uid, tickers),
             "watchlist_overview": lambda window="1d": d.watchlist_overview(uid, window),
-            "rank_watchlist": lambda metric, order="desc", limit=10, type_filter=None:
-                d.rank_watchlist(uid, metric, order, limit, type_filter),
+            "rank_watchlist": lambda metric, order="desc", limit=10, type_filter=None, tickers=None:
+                d.rank_watchlist(uid, metric, order, limit, type_filter, tickers),
             "price_chart": lambda tickers, days=180, start_date=None, end_date=None:
                 d.chart(uid, tickers, days, start_date, end_date),
             "get_etf_profile": lambda ticker: d.etf_profile(uid, ticker),
