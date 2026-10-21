@@ -80,6 +80,19 @@ def drop_lines_with(text: str, spellings: List[str]) -> str:
     return "\n".join(keep).strip()
 
 
+_CROSS_Q = re.compile(r"golden|death|\bcross", re.I)
+
+
+def add_cross_dates(question: str, text: str, summaries: Dict[str, str]) -> str:
+    """When crosses were asked about, make sure each dated 50/200 cross reaches the user."""
+    if not summaries or not _CROSS_Q.search(question or ""):
+        return text
+    have = set(dates_in(text))
+    extra = [f"- {t} 50/200-day: {s}" for t, s in summaries.items()
+             if set(dates_in(s)) - have or (not dates_in(s) and s not in text)]
+    return text + ("\n\n" + "\n".join(extra) if extra else "")
+
+
 def has_figures(text: str) -> bool:
     """Percentages, money, decimals or multiples: the things that must come from a tool."""
     return bool(_FIGURE.search(text or ""))
@@ -219,6 +232,8 @@ class GQBot:
             log.error("[agent] removing lines with ungrounded dates %s", sorted(bad))
             text = drop_lines_with(text, [r for raws in bad.values() for r in raws])
             error = "ungrounded_dates_removed"
+        if text and runner.ma_summaries:
+            text = add_cross_dates(question, text, runner.ma_summaries)
         if text and not runner.calls and has_figures(text):
             log.error("[agent] refused an ungrounded answer")
             text, error = MSG_UNGROUNDED, "ungrounded_figures"

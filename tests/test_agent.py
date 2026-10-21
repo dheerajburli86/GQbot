@@ -132,3 +132,14 @@ def test_dates_from_the_tool_or_the_question_pass():
     b, llm, _ = bot([call("get_technicals", ticker="MSFT"), say("MSFT closed on its as-of date. Since March 10, 2025 it rose.")])
     a = b.answer(42, "how has MSFT done since March 10, 2025?")
     assert a.error is None and len(llm.sent) == 2
+
+
+def test_a_cross_date_the_model_left_out_is_added():
+    out = A.add_cross_dates("last golden or death cross on IWM?", "- IWM: golden cross state.",
+                            {"IWM": "the 50-day average is ABOVE the 200-day; the last cross was a "
+                                    "golden cross on 2025-08-06 (300 sessions ago)."})
+    assert out.endswith("- IWM 50/200-day: the 50-day average is ABOVE the 200-day; the last cross "
+                        "was a golden cross on 2025-08-06 (300 sessions ago).")
+    assert A.add_cross_dates("RSI on IWM?", "x", {"IWM": "s on 2025-08-06"}) == "x"
+    assert A.add_cross_dates("cross?", "golden cross on Aug 6, 2025", {"IWM": "on 2025-08-06"}) == \
+        "golden cross on Aug 6, 2025"

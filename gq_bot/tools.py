@@ -156,6 +156,7 @@ class ToolRunner:
         self.named = list(named or [])
         self.calls: List[Dict[str, Any]] = []
         self.outputs: List[str] = []      # what the model was shown, for the grounding checks
+        self.ma_summaries: Dict[str, str] = {}   # ticker -> dated 50/200 sentence from get_technicals
         uid = user_id
         self.images: List[bytes] = []
         d = data
@@ -227,6 +228,9 @@ class ToolRunner:
             result = {k: v for k, v in result.items() if k != "_image"}
         self.calls.append({"name": name, "args": args,
                            "ok": bool(result.get("ok")) if isinstance(result, dict) else True})
+        if name == "get_technicals" and isinstance(result, dict) and result.get("ok") \
+                and result.get("ma_50_200_summary") and result.get("ticker"):
+            self.ma_summaries[result["ticker"]] = result["ma_50_200_summary"]
         out = _compact(result)
         self.outputs.append(out)
         return out

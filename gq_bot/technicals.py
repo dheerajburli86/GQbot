@@ -170,11 +170,12 @@ def technicals(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
                     f"({cross['sessions_ago']} sessions ago)")
         else:
             when = f"no 50/200 cross in the last {len(xs) - 199} sessions"
-        ma_summary = f"{state}; {when}. Quote this as written."
+        ma_summary = f"{state}; {when}."
     else:
         ma_summary = "not enough history for a 50/200-day comparison"
     return {
         "ok": True,
+        "ma_50_200_summary": ma_summary,
         "as_of": dates[-1], "close": round(px, 4), "sessions_used": len(xs),
         "trend": trend,
         "moving_averages": {f"sma_{n}": round(m, 4) if m else None for n, m in mas.items()},
@@ -183,7 +184,6 @@ def technicals(bars: List[Dict[str, Any]]) -> Dict[str, Any]:
         "sma_50_above_sma_200": (mas[50] > mas[200]) if mas[50] and mas[200] else None,
         "last_50_200_cross": cross or (
             {"type": "none found", "searched_sessions": max(len(xs) - 199, 0)} if len(xs) >= 200 else None),
-        "ma_50_200_summary": ma_summary,
         "rsi_14": r,
         "rsi_zone": rsi_zone(r),
         "macd": macd(xs),

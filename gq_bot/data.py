@@ -550,7 +550,12 @@ class GQData:
         drop = {"instrument_id", "symbol", "name", "universe", "market_cap_usd", "id", "created_at",
                 "updated_at", "timeframe", "isin"}
         out = [{k: v for k, v in r.items() if k not in drop and v not in (None, "")} for r in rows]
+        relabel = {"golden cross": "50-day above 200-day (state, not a dated cross)",
+                   "death cross": "50-day below 200-day (state, not a dated cross)"}
         for r in out:
+            v = str(r.get("dma50_vs_200dma") or "")
+            if v.lower() in relabel:
+                r["dma50_vs_200dma"] = relabel[v.lower()]
             r["note"] = ("GQ dashboard daily STATES only, as of the as_of date. They carry no cross "
                          "dates; dates come from last_50_200_cross / ma_50_200_summary.")
         return out
