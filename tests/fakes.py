@@ -34,6 +34,7 @@ class Query:
     def eq(self, c, v): self.filters.append(lambda r: str(r.get(c)) == str(v)); return self
     def in_(self, c, vs): s = {str(v) for v in vs}; self.filters.append(lambda r: str(r.get(c)) in s); return self
     def gte(self, c, v): self.filters.append(lambda r: r.get(c) is not None and str(r.get(c)) >= str(v)); return self
+    def lte(self, c, v): self.filters.append(lambda r: r.get(c) is not None and str(r.get(c)) <= str(v)); return self
     def contains(self, c, vs): self.filters.append(lambda r: set(vs) <= set(r.get(c) or [])); return self
     def ilike(self, c, p):
         rx = re.compile(like_to_regex(p), re.IGNORECASE | re.DOTALL)
@@ -79,6 +80,54 @@ def _iso_days_ago(n):
     return (datetime.now(timezone.utc) - timedelta(days=n)).isoformat()
 
 
+def series(start, n, drift=0.001, wiggle=0.01, volume=1_000_000, end=TODAY):
+    """n synthetic daily OHLCV bars ending at `end`, deterministic."""
+    out, px = [], start
+    for i in range(n):
+        d = end - timedelta(days=n - 1 - i)
+        px = px * (1 + drift + wiggle * (1 if i % 3 == 0 else -0.5 if i % 3 == 1 else -0.2))
+        out.append({"date": d.isoformat(), "open": px, "high": px * 1.01, "low": px * 0.99,
+                    "close": round(px, 4), "volume": volume * (3 if i == n - 1 else 1)})
+    return out
+
+
+def fmp(rev, ni, quarters=8, years=4, growth=0.02, cur="USD"):
+    """FMP-shaped statements, newest first, like the heatmap `fundamentals` table."""
+    def inc(i, r, n, period, fy, d):
+        return {"date": d, "period": period, "fiscalYear": fy, "reportedCurrency": cur,
+                "revenue": r, "grossProfit": r * 0.45, "operatingIncome": r * 0.3, "ebitda": r * 0.35,
+                "interestExpense": r * 0.01, "incomeBeforeTax": n * 1.2, "incomeTaxExpense": n * 0.2,
+                "netIncome": n, "epsDiluted": n / 1e9, "weightedAverageShsOutDil": 1e9}
+
+    def bal(d):
+        return {"date": d, "cashAndShortTermInvestments": 50e9, "totalCurrentAssets": 120e9,
+                "totalCurrentLiabilities": 100e9, "inventory": 5e9, "totalAssets": 350e9,
+                "totalStockholdersEquity": 60e9, "totalDebt": 100e9}
+
+    def cf(d, r, n):
+        return {"date": d, "operatingCashFlow": n * 1.2, "capitalExpenditure": -r * 0.03,
+                "freeCashFlow": n * 1.2 - r * 0.03, "commonDividendsPaid": -n * 0.15,
+                "commonStockRepurchased": -n * 0.6, "stockBasedCompensation": r * 0.03}
+
+    q_inc, q_bal, q_cf = [], [], []
+    for i in range(quarters):
+        f = (1 + growth) ** -i
+        d = (TODAY - timedelta(days=30 + 91 * i)).isoformat()
+        period, fy = f"Q{4 - i % 4}", str(2026 - i // 4)
+        q_inc.append(inc(i, rev * f, ni * f, period, fy, d)); q_bal.append(bal(d)); q_cf.append(cf(d, rev * f, ni * f))
+    a_inc, a_bal, a_cf = [], [], []
+    for y in range(years):
+        f = (1 + growth * 4) ** -y
+        d = f"{2025 - y}-09-30"
+        a_inc.append(inc(y, rev * 4 * f, ni * 4 * f, "FY", str(2025 - y), d)); a_bal.append(bal(d))
+        a_cf.append(cf(d, rev * 4 * f, ni * 4 * f))
+    return {"income_statement": a_inc, "balance_sheet": a_bal, "cash_flow": a_cf,
+            "income_statement_q": q_inc, "balance_sheet_q": q_bal, "cash_flow_q": q_cf,
+            "reported_currency": cur, "updated_at": "2026-10-10",
+            "profile": {"ceo": "Tim Cook", "fullTimeEmployees": "164000", "beta": 1.2},
+            "description": "Designs phones."}
+
+
 def world(**overrides):
     """A small but complete FinXray + heatmap world."""
     bars = [{"instrument_id": "i-aapl", "date": (TODAY - timedelta(days=d)).isoformat(), "close": c}
@@ -88,7 +137,8 @@ def world(**overrides):
                   {"id": "u2", "telegram_chat_id": "43", "telegram_username": "gone"},
                   {"id": "u3", "telegram_chat_id": None, "telegram_username": "late"}],
         "watchlists": [{"user_id": "u1", "ticker": "aapl"}, {"user_id": "u1", "ticker": "QQQ"},
-                       {"user_id": "u1", "ticker": "MSFT"}, {"user_id": "u9", "ticker": "TSLA"}],
+                       {"user_id": "u1", "ticker": "MSFT"}, {"user_id": "u1", "ticker": "VOO"},
+                       {"user_id": "u1", "ticker": "ABALX"}, {"user_id": "u9", "ticker": "TSLA"}],
         "alerts": [
             {"id": 1, "ticker": "AAPL", "summary": "Apple cut iPhone guidance.", "impact": "HIGH",
              "filing_type": "8-K", "source": "SEC_EDGAR", "created_at": _iso_days_ago(3),
@@ -104,7 +154,9 @@ def world(**overrides):
         "etf_company_data": [{"ticker": "QQQ", "aum": 300e9, "sector_weights": {"Technology": 50}}],
         "etf_expenses": [{"ticker": "QQQ", "expense_ratio": 0.2}],
         "etf_holdings": [{"ticker": "QQQ", "security_symbol": s, "security_name": s, "portfolio_pct": w, "as_of": "2026-10-15"}
-                         for s, w in [("MSFT", 8.5), ("AAPL", 8.9), ("NVDA", 8.1)]],
+                         for s, w in [("MSFT", 8.5), ("AAPL", 8.9), ("NVDA", 8.1)]]
+                        + [{"ticker": "VOO", "security_symbol": s, "security_name": s, "portfolio_pct": w, "as_of": "2026-10-15"}
+                           for s, w in [("MSFT", 6.5), ("AAPL", 7.0), ("JPM", 1.5)]],
         "etf_holdings_changes": [{"ticker": "QQQ", "action": "ADDED", "security_symbol": "PLTR",
                                   "security_name": "Palantir", "weight_new": 0.4, "detected_at": _iso_days_ago(5)}],
         "etf_fund_events": [{"tickers": ["QQQ"], "status": "QUEUED", "form": "497", "event_type": "INDEX_CHANGE",
@@ -114,21 +166,46 @@ def world(**overrides):
     }
     heat = {
         "instruments": [
-            {"id": "i-aapl", "symbol": "AAPL", "name": "Apple Inc", "universe": "us_stocks", "sector": "Technology", "is_active": True},
+            {"id": "i-aapl", "symbol": "AAPL", "name": "Apple Inc", "universe": "us_stocks", "sector": "Technology",
+             "industry": "Hardware", "market_cap_usd": 3000e9, "is_active": True, "company_about": "Apple makes iPhones."},
             {"id": "i-msft", "symbol": "MSFT", "name": "Microsoft", "universe": "us_stocks", "sector": "Technology", "is_active": True},
             {"id": "i-nvda", "symbol": "NVDA", "name": "NVIDIA", "universe": "us_stocks", "sector": "Technology", "is_active": True},
             {"id": "i-qqq", "symbol": "QQQ", "name": "Invesco QQQ Trust", "universe": "us_etfs", "is_active": True},
+            {"id": "i-voo", "symbol": "VOO", "name": "Vanguard S&P 500", "universe": "us_etfs", "is_active": True},
             {"id": "i-spy", "symbol": "SPY", "name": "SPDR S&P 500", "universe": "us_etfs", "is_active": True},
             {"id": "i-tsla", "symbol": "TSLA", "name": "Tesla", "universe": "us_stocks", "sector": "Consumer", "is_active": True},
+            {"id": "i-amd", "symbol": "AMD", "name": "AMD", "universe": "us_stocks", "sector": "Technology",
+             "industry": "Hardware", "market_cap_usd": 250e9, "is_active": True},
+            {"id": "i-intc", "symbol": "INTC", "name": "Intel", "universe": "us_stocks", "sector": "Technology",
+             "industry": "Hardware", "market_cap_usd": 100e9, "is_active": True},
+            {"id": "i-orcl", "symbol": "ORCL", "name": "Oracle", "universe": "us_stocks", "sector": "Technology",
+             "industry": "Hardware", "market_cap_usd": 400e9, "is_active": True},
+            {"id": "i-dell", "symbol": "DELL", "name": "Dell", "universe": "us_stocks", "sector": "Technology",
+             "industry": "Hardware", "market_cap_usd": 90e9, "is_active": True},
         ],
         "returns_latest": [
             {"instrument_id": "i-aapl", "price_usd": 181.0, "as_of": "2026-10-16", "ret_1d": 0.56, "ret_1w": -9.5, "ret_1m": -12.0},
             {"instrument_id": "i-msft", "price_usd": 400.0, "as_of": "2026-10-16", "ret_1d": 0.1, "ret_1w": -1.0},
             {"instrument_id": "i-nvda", "price_usd": 120.0, "as_of": "2026-10-16", "ret_1d": 1.0, "ret_1w": 2.0},
             {"instrument_id": "i-qqq", "price_usd": 480.0, "as_of": "2026-10-16", "ret_1d": 0.3, "ret_1w": -0.8},
+            {"instrument_id": "i-amd", "price_usd": 150.0, "ret_1w": 3.0, "ret_ytd": 20.0, "ret_1y": 30.0},
+            {"instrument_id": "i-intc", "price_usd": 25.0, "ret_1w": -2.0, "ret_ytd": -10.0, "ret_1y": -20.0},
+            {"instrument_id": "i-orcl", "price_usd": 140.0, "ret_1w": 1.0, "ret_ytd": 15.0, "ret_1y": 25.0},
+            {"instrument_id": "i-dell", "price_usd": 120.0, "ret_1w": 0.5, "ret_ytd": 5.0, "ret_1y": 10.0},
             {"instrument_id": "i-spy", "price_usd": 560.0, "as_of": "2026-10-16", "ret_1d": 0.2, "ret_1w": -0.5},
         ],
-        "price_history": bars,
+        "price_history": bars
+            + [{**b, "instrument_id": "i-spy"} for b in
+               [{"date": (TODAY - timedelta(days=d)).isoformat(), "close": c}
+                for d, c in [(6, 560.0), (4, 559.0), (2, 558.0), (0, 557.2)]]]
+            + [{**b, "instrument_id": "i-qqq"} for b in
+               [{"date": (TODAY - timedelta(days=d)).isoformat(), "close": c} for d, c in [(6, 480.0), (0, 476.16)]]]
+            + [{**b, "instrument_id": "i-msft"} for b in series(300.0, 420)],
+        "fundamentals": [{"instrument_id": "i-aapl", **fmp(100e9, 25e9)},
+                         {"instrument_id": "i-amd", **fmp(7e9, 1e9, growth=0.05)},
+                         {"instrument_id": "i-intc", **fmp(13e9, -1e9, growth=-0.02)},
+                         {"instrument_id": "i-orcl", **fmp(14e9, 3e9)},
+                         {"instrument_id": "i-dell", **fmp(24e9, 1e9, cur="EUR")}],
         "us_stock_fundamentals": [{"ticker": "AAPL", "updated_at": "2026-10-01", "data": {
             "quarterly": [{"period": f"Q{i}", "fiscal_year": "2026",
                            "income_statement": {"revenue": 90e9 + i, "net_income": 20e9, "noise": 1},

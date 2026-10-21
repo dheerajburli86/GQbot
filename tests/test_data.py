@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fakes import TODAY, world
 
 from gq_bot.data import GQData
@@ -17,7 +19,7 @@ def test_user_lookup_by_chat_id_then_username():
 
 def test_watchlist_is_normalised_and_cached():
     d, fx, _ = make()
-    assert d.watchlist("u1") == ["AAPL", "MSFT", "QQQ"]
+    assert d.watchlist("u1") == ["AAPL", "ABALX", "MSFT", "QQQ", "VOO"]
     n = fx.calls.count("watchlists")
     d.watchlist("u1")
     assert fx.calls.count("watchlists") == n
@@ -54,18 +56,34 @@ def test_events_are_scoped_windowed_and_filterable():
     assert [e["summary"] for e in ev] == ["Analyst lowered target.", "Apple cut iPhone guidance."]
     assert ev[1]["feature"] == "SEC EDGAR Filings"
     assert [e["impact"] for e in d.events("u1", "AAPL", 14, "HIGH")["events"]] == ["HIGH"]
-    assert len(d.events("u1", "AAPL", days=500)["events"]) == 3   # capped at 90 days, still includes the 60-day one
+    assert len(d.events("u1", "AAPL", days=500)["events"]) == 3   # capped at 365 days, includes the 60-day one
+    assert [e["type"] for e in d.events("u1", "AAPL", 30, category="analyst")["events"]] == ["RATING"]
+    assert [e["type"] for e in d.events("u1", "AAPL", 30, category="sec_filing")["events"]] == ["8-K"]
+    old = d.events("u1", "AAPL", start_date=(TODAY - timedelta(days=70)).isoformat(),
+                   end_date=(TODAY - timedelta(days=50)).isoformat())["events"]
+    assert [e["summary"] for e in old] == ["Old news."]
 
 
 def test_explain_move_joins_price_events_sector_and_market():
     d, *_ = make()
     r = d.explain_move("u1", "AAPL", days=7)
-    assert r["ok"] and r["compared_on"] == "ret_1w"
+    assert r["ok"] and r["window"]["to"] == TODAY.isoformat()
     assert r["price_path"]["change_pct"] == -9.5 and r["price_path"]["sessions"] == 7
     assert any("guidance" in e["summary"] for e in r["events"])
     sec = r["sector_context"]
-    assert sec["count"] == 3 and sec["median_pct"] == -1.0 and sec["stock_minus_sector_pct"] == -8.5
+    assert sec["count"] == 7 and sec["median_pct"] == 0.5 and sec["stock_minus_sector_pct"] == -10.0
     assert r["market_context"] == {"benchmark": "SPY", "return_pct": -0.5, "stock_minus_market_pct": -9.0}
+    worst = r["key_sessions"]["biggest_down_days"][0]
+    assert worst["date"] == (TODAY - timedelta(days=4)).isoformat()
+
+
+def test_explain_move_for_a_named_period_uses_those_dates():
+    d, *_ = make()
+    r = d.explain_move("u1", "AAPL", start_date=(TODAY - timedelta(days=4)).isoformat(),
+                       end_date=(TODAY - timedelta(days=1)).isoformat())
+    assert r["price_path"]["from"] == (TODAY - timedelta(days=4)).isoformat()
+    assert r["price_path"]["to"] == (TODAY - timedelta(days=1)).isoformat()
+    assert "sector_context" not in r   # dashboard columns are lookbacks, not arbitrary periods
 
 
 def test_explain_move_for_an_etf_skips_sector_context():
@@ -81,18 +99,13 @@ def test_a_broken_source_degrades_one_piece_not_the_answer():
     assert d.events("u1", "AAPL")["reason"] == "source_error"
 
 
-def test_fundamentals_are_trimmed_to_recent_periods_and_key_lines():
+def test_price_history_takes_a_date_range_and_samples_long_windows():
     d, *_ = make()
-    f = d.fundamentals("u1", "AAPL")
-    assert len(f["quarterly"]) == 4 and len(f["annual"]) == 2
-    assert f["quarterly"][0]["income_statement"] == {"revenue": 90e9, "net_income": 20e9}
-    assert d.fundamentals("u1", "MSFT")["reason"] == "no_fundamentals"
-
-
-def test_price_history_caps_and_summarises():
-    d, *_ = make()
-    h = d.price_history("u1", "AAPL", days=10000)
-    assert h["days"] == 400 and h["summary"]["change_pct"] == -9.5 and len(h["bars"]) == 7
+    h = d.price_history("u1", "AAPL", days=10)
+    assert h["summary"]["change_pct"] == -9.5 and len(h["bars"]) == 7
+    long = d.price_history("u1", "MSFT", days=3650)
+    assert long["summary"]["sessions"] == 420 and len(long["sampled_closes"]) <= 25
+    assert long["sampled_closes"][-1]["date"] == TODAY.isoformat()
 
 
 def test_etf_tools():
@@ -101,6 +114,7 @@ def test_etf_tools():
     assert p["ok"] and p["fund"]["name"] == "Invesco QQQ Trust" and "id" not in p["fund"]
     assert p["expenses"]["expense_ratio"] == 0.2
     assert d.etf_profile("u1", "AAPL")["reason"] == "not_an_etf"
+    assert d.etf_holdings("u1", "QQQ")["top_n_combined_weight_pct"] == 25.5
     h = d.etf_holdings("u1", "QQQ", top_n=2)
     assert [x["symbol"] for x in h["top_holdings"]] == ["AAPL", "MSFT"]
     c = d.etf_changes("u1", "QQQ", days=30)

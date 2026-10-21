@@ -27,6 +27,11 @@ def main() -> None:
     def ask(q: str) -> None:
         ans = bot.answer(a.chat_id, q, a.username)
         print("\n" + ans.text + "\n")
+        for i, png in enumerate(ans.images, 1):
+            name = f"gqbot_chart_{i}.png"
+            with open(name, "wb") as f:
+                f.write(png)
+            print(f"[chart saved to {name}]")
         if a.trace:
             print(json.dumps({"tools": ans.tools, "tickers": ans.tickers, "error": ans.error,
                               "tokens": [ans.prompt_tokens, ans.completion_tokens],

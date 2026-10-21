@@ -13,7 +13,8 @@ def runner(uid="u1"):
 
 def test_every_schema_has_a_handler():
     r = runner()
-    assert {t["function"]["name"] for t in TOOLS} == set(r._table)
+    # get_fundamentals is a hidden alias kept for old conversation memory
+    assert {t["function"]["name"] for t in TOOLS} == set(r._table) - {"get_fundamentals"}
 
 
 def test_user_is_bound_by_the_runner_not_the_model():

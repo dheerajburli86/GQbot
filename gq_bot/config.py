@@ -43,9 +43,9 @@ class Settings:
                              or os.getenv("DEEPINFRA_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or "")
     llm_model: str = field(default_factory=lambda: os.getenv("LLM_MODEL", ""))
     llm_temperature: float = field(default_factory=lambda: float(os.getenv("LLM_TEMPERATURE", "0.2")))
-    llm_max_tokens: int = field(default_factory=lambda: _int("LLM_MAX_TOKENS", 900))
-    llm_timeout_s: int = field(default_factory=lambda: _int("LLM_TIMEOUT_S", 60))
-    max_tool_steps: int = field(default_factory=lambda: _int("GQ_BOT_MAX_TOOL_STEPS", 6))
+    llm_max_tokens: int = field(default_factory=lambda: _int("LLM_MAX_TOKENS", 1600))
+    llm_timeout_s: int = field(default_factory=lambda: _int("LLM_TIMEOUT_S", 90))
+    max_tool_steps: int = field(default_factory=lambda: _int("GQ_BOT_MAX_TOOL_STEPS", 8))
 
     # Conversation + abuse limits.
     history_turns: int = field(default_factory=lambda: _int("GQ_BOT_HISTORY_TURNS", 6))

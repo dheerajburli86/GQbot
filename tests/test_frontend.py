@@ -35,8 +35,9 @@ def test_memory_expires_and_is_bounded():
 
 def test_prompt_and_help_state_the_product_rules():
     p = system_prompt("Friday", [{"ticker": "AAPL", "name": "Apple", "type": "stock"}])
-    for rule in ("Only use numbers", "Only answer about tickers on the watchlist", "No investment advice",
-                 "explain_move first", "/add TICKER"):
+    for rule in ("Ground every number", "Only answer about tickers on the watchlist",
+                 "No personalised investment advice", "explain_move", "/add TICKER", "get_valuation",
+                 "never do your own arithmetic"):
         assert rule in p
     assert system_prompt("x", []).count("(empty)") == 1
     assert "/watchlist" in HELP and "/add" in HELP

@@ -33,7 +33,12 @@ HELP = (
     "- What happened to AAPL this month?\n"
     "- How has SPY done YTD vs QQQ?\n"
     "- Any recent filings or insider trades for MSFT?\n"
-    "- Top holdings of QQQ, and did anything change?\n\n"
+    "- Top holdings of QQQ, and did anything change?\n"
+    "- Is MSFT expensive vs its peers? How healthy is its balance sheet?\n"
+    "- Technical view on SPY: trend, RSI, 52-week range\n"
+    "- Which of my holdings did best this year? Which look most oversold?\n"
+    "- How much do VOO and QQQ overlap? Which of my ETFs hold NVDA?\n"
+    "- Chart XLK vs XLE over the last year\n\n"
     "Commands:\n"
     "/watchlist - what I can answer about\n"
     "/reset - start a fresh conversation\n"
@@ -151,6 +156,12 @@ class TelegramFrontEnd:
                  [c["name"] for c in ans.tools], ans.tickers, ans.latency_ms, ans.error)
         for part in split_message(ans.text):
             await update.message.reply_text(part, link_preview_options=NO_PREVIEW)
+        for png in ans.images:
+            try:
+                await context.bot.send_chat_action(chat, ChatAction.UPLOAD_PHOTO)
+                await update.message.reply_photo(photo=png)
+            except Exception:
+                log.exception("[tg] chart upload failed")
 
     async def on_error(self, update, context: ContextTypes.DEFAULT_TYPE):
         log.error("[tg] unhandled error: %s", context.error, exc_info=context.error)

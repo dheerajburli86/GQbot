@@ -44,7 +44,7 @@ Telegram ──> telegram_app.py ──> agent.py ──(tool calls)──> tool
    FinXray bot stored works here. Username is the fallback.
 2. The system prompt carries today's date (ET) and the user's watchlist with
    names, so "Apple" resolves to AAPL.
-3. The LLM calls tools (up to `GQ_BOT_MAX_TOOL_STEPS`, default 6). On the last
+3. The LLM calls tools (up to `GQ_BOT_MAX_TOOL_STEPS`, default 8). On the last
    step tools are withheld, which forces it to answer.
 4. Only questions and final answers go into short-term memory (6 turns, 30
    minutes), so follow-ups like "and last month?" work.
@@ -53,24 +53,38 @@ Telegram ──> telegram_app.py ──> agent.py ──(tool calls)──> tool
 
 ### Tools
 
-| Tool | Data |
+Every ratio, growth rate and indicator is computed in Python (`financials.py`,
+`technicals.py`), never by the model.
+
+| Tool | What it answers |
 |---|---|
-| `explain_move` | price path + drawdown, FinXray events in/before the window, sector median, SPY |
+| `explain_move` | why it moved, for a recent window or a named period: price path, biggest sessions with the events just before each, SPY over the same dates, sector median |
 | `get_snapshot` | price and 1D to ALL returns, as on the dashboard |
-| `get_price_history` | daily closes + summary (high, low, max drawdown, biggest days) |
-| `get_events` | FinXray alerts, filterable by impact |
-| `get_fundamentals` | last 4 quarters + 2 fiscal years (stocks) |
-| `compare_tickers` | up to 5 watchlisted tickers side by side |
-| `get_etf_profile` | fund facts, expense ratio, company data (ETFs) |
-| `get_etf_holdings` | top holdings by weight (ETFs) |
-| `get_etf_changes` | holdings added/removed, SEC fund actions, alerts (ETFs) |
+| `get_company_profile` | what the business is: GQuants' own annual-report notes or the FMP description, CEO, employees, beta |
+| `get_financials` | margins, TTM and multi-year growth, ROE/ROA/ROIC, debt, liquidity, coverage, FCF, dividends, buybacks, 8-quarter and 4-year trend |
+| `get_valuation` | P/E, P/S, P/B, EV/EBITDA, EV/Sales, P/FCF, yields, PEG, with industry-peer medians |
+| `get_peer_comparison` | the ~10 closest-sized industry peers on returns, valuation, margins and growth, with percentile ranks |
+| `get_technicals` | trend vs 20/50/100/200-day averages, golden/death cross, RSI, MACD, 52-week range, support/resistance, volatility, ATR, volume, GQ trend signals |
+| `get_risk_metrics` | return, volatility, Sharpe, Sortino, max drawdown, and beta/correlation/capture vs SPY, QQQ, IWM, DIA or another holding |
+| `get_price_history` | any window or date range, summarised |
+| `get_events` | FinXray events by category (earnings, insider, analyst, SEC filing, news, technical) and impact, up to a year back |
+| `compare_tickers` | up to 5 tickers side by side, with valuation for stocks |
+| `watchlist_overview` | gainers, losers, breadth, sector mix, high-impact events this week |
+| `rank_watchlist` | rank holdings by return, RSI, distance from high, volatility, P/E, yield, growth, margin, ROE, leverage |
+| `price_chart` | PNG chart sent to Telegram: one ticker with 50/200-day averages, or up to 5 rebased to 100 |
+| `get_etf_profile` / `get_etf_holdings` / `get_etf_changes` | ETF facts, top holdings, what changed |
+| `get_etf_overlap` | shared holdings and weight overlap of two ETFs |
+| `get_etf_exposure` | which watchlist ETFs hold a given stock |
+
+Context beyond the watchlist (benchmarks, sector medians, industry peers) only
+appears inside an answer about a watchlisted ticker.
 
 ### Tables read
 
 | Database | Tables |
 |---|---|
 | FinXray US | `users`, `watchlists`, `alerts`, `etf_master`, `etf_company_data`, `etf_expenses`, `etf_holdings`, `etf_holdings_changes`, `etf_fund_events` |
-| Heatmap | `instruments`, `returns_latest`, `price_history`, `us_stock_fundamentals` |
+| Heatmap | `instruments`, `returns_latest`, `price_history`, `fundamentals` (FMP statements + profile), `us_stock_fundamentals` (fallback), `tech_trend_identification` |
 
 These column names were taken from the two repos' code and migrations and have
 **not yet been checked against the live databases**. Each read is wrapped, so a

@@ -42,6 +42,7 @@ class Answer:
     completion_tokens: int = 0
     latency_ms: int = 0
     error: Optional[str] = None
+    images: List[bytes] = field(default_factory=list)
 
 
 def _assistant_msg(reply) -> Dict[str, Any]:
@@ -121,7 +122,7 @@ class GQBot:
         else:
             self.memory.add(chat_id, question, text)
         return Answer(text, user_id=uid, tools=runner.calls, tickers=runner.tickers,
-                      prompt_tokens=ptok, completion_tokens=ctok, error=error)
+                      prompt_tokens=ptok, completion_tokens=ctok, error=error, images=runner.images)
 
     def reset(self, chat_id) -> None:
         self.memory.reset(chat_id)

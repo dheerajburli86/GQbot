@@ -27,7 +27,7 @@ def test_tool_then_answer_round_trip_and_query_log():
     assert ans.prompt_tokens == 300 and ans.completion_tokens == 60
     second = llm.sent[1]["messages"]
     assert second[-2]["role"] == "assistant" and second[-2]["tool_calls"][0]["function"]["name"] == "explain_move"
-    assert second[-1]["role"] == "tool" and '"compared_on":"ret_1w"' in second[-1]["content"]
+    assert second[-1]["role"] == "tool" and '"stock_minus_market_pct":-9.0' in second[-1]["content"]
     logged = fx.tables["gq_bot_queries"][-1]
     assert logged["user_id"] == "u1" and logged["tickers"] == ["AAPL"] and logged["error"] is None
 
