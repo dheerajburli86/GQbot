@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -70,6 +71,19 @@ def dates_in(text: str) -> Dict[str, List[str]]:
     return found
 
 
+def look_back_dates(today) -> List[str]:
+    """Today, yesterday and the usual windows back from today ("over the last 3 years")."""
+    out = [(today - timedelta(days=d)).isoformat() for d in range(0, 4)]
+    for months in (1, 3, 6, 12, 24, 36, 60, 120):
+        y, m = divmod(today.month - 1 - months, 12)
+        try:
+            back = today.replace(year=today.year + y, month=m + 1)
+        except ValueError:
+            back = today.replace(year=today.year + y, month=m + 1, day=28)
+        out += [(back + timedelta(days=d)).isoformat() for d in (-1, 0, 1)]
+    return out
+
+
 def ungrounded_dates(text: str, sources: List[str]) -> Dict[str, List[str]]:
     known = set()
     for src in sources:
@@ -82,7 +96,7 @@ def drop_lines_with(text: str, spellings: List[str]) -> str:
     return "\n".join(keep).strip()
 
 
-_CROSS_Q = re.compile(r"golden|death|\bcross", re.I)
+_CROSS_Q = re.compile(r"golden|death\s*cross|50\s*/\s*200|50.day.{0,40}200.day.{0,20}cross", re.I)
 
 
 def add_cross_dates(question: str, text: str, summaries: Dict[str, str]) -> str:
@@ -93,6 +107,17 @@ def add_cross_dates(question: str, text: str, summaries: Dict[str, str]) -> str:
     extra = [f"- {t} 50/200-day: {s}" for t, s in summaries.items()
              if set(dates_in(s)) - have or (not dates_in(s) and s not in text)]
     return text + ("\n\n" + "\n".join(extra) if extra else "")
+
+
+def unsourced_figures(text: str, sources: List[str]) -> List[str]:
+    """Figures in the answer that appear nowhere in what the model was given this turn."""
+    pool = " ".join(sources)
+    out = []
+    for m in _FIGURE.finditer(text or ""):
+        core = re.sub(r"[^\d.]", "", m.group(0)).strip(".")
+        if core and core not in pool:
+            out.append(m.group(0))
+    return out
 
 
 def has_figures(text: str) -> bool:
@@ -193,7 +218,8 @@ class GQBot:
         text, error = "", None
         nudged = dates_nudged = False
         today = self.now()
-        allowed = [question, today.date().isoformat()]
+        given = [m["content"] for m in messages if isinstance(m.get("content"), str)]
+        allowed = [question, *look_back_dates(today.date())]
         try:
             for step in range(self.s.max_tool_steps + 1):
                 # The last step withholds tools so the model has to answer.
@@ -209,13 +235,14 @@ class GQBot:
                     continue
                 text = reply.content or ""
                 # A data answer with no tool call this turn is from memory or invented: push back once.
-                if tools and not runner.calls and not nudged and has_figures(text):
+                if tools and not runner.calls and not nudged and unsourced_figures(text, given):
                     nudged = True
                     log.warning("[agent] figures without a tool call; nudging")
                     messages.append({"role": "assistant", "content": text})
                     messages.append({"role": "user", "content": NUDGE_NO_TOOLS})
                     continue
-                bad = ungrounded_dates(text, runner.outputs + allowed) if runner.calls else {}
+                bad = ungrounded_dates(text, runner.outputs + allowed + [json.dumps(runner.calls)]) \
+                    if runner.calls else {}
                 if bad and tools and not dates_nudged:
                     dates_nudged = True
                     log.warning("[agent] ungrounded dates %s; nudging", sorted(bad))
@@ -229,14 +256,15 @@ class GQBot:
                           prompt_tokens=ptok, completion_tokens=ctok, error=str(e))
 
         text = plain_text(text or "")
-        bad = ungrounded_dates(text, runner.outputs + allowed) if runner.calls else {}
+        bad = ungrounded_dates(text, runner.outputs + allowed + [json.dumps(runner.calls)]) \
+            if runner.calls else {}
         if bad:
             log.error("[agent] removing lines with ungrounded dates %s", sorted(bad))
             text = drop_lines_with(text, [r for raws in bad.values() for r in raws])
             error = "ungrounded_dates_removed"
         if text and runner.ma_summaries:
             text = add_cross_dates(question, text, runner.ma_summaries)
-        if text and not runner.calls and has_figures(text):
+        if text and not runner.calls and unsourced_figures(text, given):
             log.error("[agent] refused an ungrounded answer")
             text, error = MSG_UNGROUNDED, "ungrounded_figures"
             return Answer(text, user_id=uid, tools=runner.calls, tickers=runner.tickers,

@@ -143,3 +143,21 @@ def test_a_cross_date_the_model_left_out_is_added():
     assert A.add_cross_dates("RSI on IWM?", "x", {"IWM": "s on 2025-08-06"}) == "x"
     assert A.add_cross_dates("cross?", "golden cross on Aug 6, 2025", {"IWM": "on 2025-08-06"}) == \
         "golden cross on Aug 6, 2025"
+
+
+def test_explaining_a_figure_the_user_gave_is_not_refused():
+    b, llm, _ = bot([say("A beta of 1.5 means it moves about 1.5x the market.")])
+    a = b.answer(42, "what does a beta of 1.5 mean?")
+    assert a.error is None and len(llm.sent) == 1
+
+
+def test_a_three_year_window_start_is_not_treated_as_invented():
+    b, llm, _ = bot([call("get_technicals", ticker="MSFT"),
+                     say("- Over October 16, 2023 to October 16, 2026 MSFT rose.")])
+    a = b.answer(42, "MSFT over the last 3 years?")
+    assert a.error is None and "2023" in a.text
+
+
+def test_a_macd_crossover_question_gets_no_50_200_line():
+    assert A.add_cross_dates("when was the last MACD crossover?", "x", {"IWM": "on 2025-08-06"}) == "x"
+    assert A.add_cross_dates("last golden or death cross?", "x", {"IWM": "on 2025-08-06"}) != "x"
