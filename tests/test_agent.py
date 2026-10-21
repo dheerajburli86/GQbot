@@ -79,3 +79,23 @@ def test_question_is_length_capped():
     b, llm, _ = bot([say("ok")])
     b.answer(42, "x" * 5000)
     assert len(llm.sent[0]["messages"][-1]["content"]) == A.MAX_QUESTION_CHARS
+
+
+def test_figures_without_a_tool_call_are_nudged_then_grounded():
+    b, llm, _ = bot([say("XLE is up 11.23% over 3 months."),
+                          call("get_snapshot", ticker="QQQ"), say("QQQ is up, per the data.")])
+    a = b.answer(42, "rank the sectors")
+    assert a.text == "QQQ is up, per the data." and a.error is None
+    assert "called no tool" in llm.sent[1]["messages"][-1]["content"]
+
+
+def test_figures_never_backed_by_a_tool_are_refused():
+    b, llm, _ = bot([say("XLE is up 11.23%."), say("Still 11.23%, trust me.")])
+    a = b.answer(42, "rank the sectors")
+    assert a.error == "ungrounded_figures" and "11.23" not in a.text
+
+
+def test_a_plain_reply_without_figures_needs_no_tool():
+    b, llm, _ = bot([say("TSLA is not on your watchlist. Add it with /add TSLA.")])
+    a = b.answer(42, "how is TSLA")
+    assert a.error is None and len(llm.sent) == 1

@@ -31,6 +31,17 @@ MSG_EMPTY_WATCHLIST = ("Your watchlist is empty, so there's nothing I can answer
 MSG_LLM_DOWN = "I couldn't reach my language model just now. Please try again in a minute."
 MSG_DATA_DOWN = "I couldn't reach the GQuants database just now. Please try again in a minute."
 MSG_NO_ANSWER = "I couldn't put an answer together for that. Could you rephrase it?"
+MSG_UNGROUNDED = ("I couldn't fetch the data to answer that properly just now, and I won't give you "
+                  "numbers I haven't looked up. Please ask again.")
+NUDGE_NO_TOOLS = ("You answered with figures but called no tool in this turn. Earlier answers and your "
+                  "own knowledge are not a source. Call the tools that fetch these figures now, then "
+                  "answer only from their results.")
+_FIGURE = re.compile(r"\d+(?:\.\d+)?\s?%|\$\s?\d|\b\d+\.\d+\b|\b\d+(?:\.\d+)?x\b")
+
+
+def has_figures(text: str) -> bool:
+    """Percentages, money, decimals or multiples: the things that must come from a tool."""
+    return bool(_FIGURE.search(text or ""))
 
 
 @dataclass
@@ -111,6 +122,7 @@ class GQBot:
         ]
         ptok = ctok = 0
         text, error = "", None
+        nudged = False
         try:
             for step in range(self.s.max_tool_steps + 1):
                 # The last step withholds tools so the model has to answer.
@@ -124,7 +136,14 @@ class GQBot:
                         messages.append({"role": "tool", "tool_call_id": call.id,
                                          "content": runner.run(call.name, call.arguments)})
                     continue
-                text = reply.content
+                text = reply.content or ""
+                # A data answer with no tool call this turn is from memory or invented: push back once.
+                if tools and not runner.calls and not nudged and has_figures(text):
+                    nudged = True
+                    log.warning("[agent] figures without a tool call; nudging")
+                    messages.append({"role": "assistant", "content": text})
+                    messages.append({"role": "user", "content": NUDGE_NO_TOOLS})
+                    continue
                 break
         except LLMError as e:
             log.error("[agent] %s", e)
@@ -132,6 +151,11 @@ class GQBot:
                           prompt_tokens=ptok, completion_tokens=ctok, error=str(e))
 
         text = plain_text(text or "")
+        if text and not runner.calls and has_figures(text):
+            log.error("[agent] refused an ungrounded answer")
+            text, error = MSG_UNGROUNDED, "ungrounded_figures"
+            return Answer(text, user_id=uid, tools=runner.calls, tickers=runner.tickers,
+                          prompt_tokens=ptok, completion_tokens=ctok, error=error)
         if not text:
             text, error = MSG_NO_ANSWER, "empty_answer"
         else:
