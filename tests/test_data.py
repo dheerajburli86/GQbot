@@ -150,10 +150,15 @@ def test_holding_changes_are_netted_and_cash_is_ignored():
             {"action": "ADDED", "security_symbol": "GEN", "security_name": "Gen Digital Inc", "detected_at": "2026-10-07"},
             {"action": "ADDED", "security_symbol": "", "security_name": "-USD CASH-", "detected_at": "2026-10-04"},
             {"action": "ADDED", "security_symbol": "", "security_name": "GOLDMAN FS TRSY OBLIG INST 468", "detected_at": "2026-10-04"},
-            {"action": "REMOVED", "security_symbol": "", "security_name": "ICE Brent Crude Oil Future 10/30/2026", "detected_at": "2026-10-04"}]
+            {"action": "REMOVED", "security_symbol": "", "security_name": "ICE Brent Crude Oil Future 10/30/2026", "detected_at": "2026-10-04"},
+            {"action": "ADDED", "security_symbol": "", "security_name": "CME E-mini Russell 1000 Value Index Futures 12/18/2026", "detected_at": "2026-10-04"},
+            {"action": "ADDED", "security_symbol": "", "security_name": "MKTLIQ 12/31/2049", "detected_at": "2026-10-04"},
+            {"action": "REMOVED", "security_symbol": "", "security_name": "United States Treasury Bill 11/20/2026", "detected_at": "2026-10-04"},
+            {"action": "ADDED", "security_symbol": "BILL", "security_name": "BILL Holdings Inc", "detected_at": "2026-10-04"}]
     n = net_holding_changes(rows)
-    assert [e["symbol"] for e in n["net_added"]] == ["Y"] and [e["symbol"] for e in n["net_removed"]] == ["Z"]
-    assert n["churned_count"] == 2 and n["cash_and_derivative_lines_ignored"] == 3
+    # BILL Holdings is a company, not a Treasury bill
+    assert [e["symbol"] for e in n["net_added"]] == ["Y", "BILL"] and [e["symbol"] for e in n["net_removed"]] == ["Z"]
+    assert n["churned_count"] == 2 and n["cash_and_derivative_lines_ignored"] == 6
 
 
 def test_watchlist_etf_changes_covers_every_etf():

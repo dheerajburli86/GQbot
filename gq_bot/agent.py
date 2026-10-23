@@ -141,6 +141,7 @@ class Answer:
 _BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__", re.S)
 _BULLET = re.compile(r"^(\s*)[*•]\s+", re.M)
 _HEADING = re.compile(r"^\s*#{1,6}\s*", re.M)
+_DOTTED = re.compile(r"\b([A-Z0-9][A-Z0-9&-]{0,14})\.([A-Z]{2,4})\b")
 _PLUMBING = re.compile(r"^.*\b(sent to the user automatically|is sent automatically|after your text)\b.*$\n?",
                        re.M | re.I)
 
@@ -151,6 +152,8 @@ def plain_text(text: str) -> str:
     text = _BULLET.sub(lambda m: m.group(1) + "- ", text)
     text = _HEADING.sub("", text)
     text = _PLUMBING.sub("", text)
+    # Telegram turns "ETE.AT" or "ARX.TO" into web links; a zero-width space after the dot stops it
+    text = _DOTTED.sub(lambda m: m.group(1) + ".\u200b" + m.group(2), text)
     return text.strip()
 
 

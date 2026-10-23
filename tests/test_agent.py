@@ -165,3 +165,9 @@ def test_a_macd_crossover_question_gets_no_50_200_line():
 
 def test_delivery_plumbing_never_reaches_the_user():
     assert A.plain_text("QQQ is up 44%.\n\nThe chart image is sent to the user automatically after your text.") == "QQQ is up 44%."
+
+
+def test_exchange_suffixed_tickers_are_not_turned_into_links():
+    out = A.plain_text("Added National Bank of Greece (ETE.AT) and Sun Pharma (SUNPHARMA.BO); US-listed BRK.B too.")
+    assert "ETE.\u200bAT" in out and "SUNPHARMA.\u200bBO" in out and "BRK.B" in out
+    assert out.replace("\u200b", "") == "Added National Bank of Greece (ETE.AT) and Sun Pharma (SUNPHARMA.BO); US-listed BRK.B too."

@@ -119,8 +119,10 @@ class _TTLCache:
         self.items.pop(key, None)
 
 
-_NOISE = re.compile(r"\bCASH\b|MONEY MARKET|TRSY|TREASURY OBLIG|GOVERNMENT & AGENCY|GOVT.*PORTFOLIO|"
-                    r"\bFUTURE\b|\bFUT\b|\bFX\b|COLLATERAL|\bREPO\b|^-[A-Z]{3} CASH-$", re.I)
+_NOISE = re.compile(r"\bCASH\b|MONEY MARKET|TRSY|TREASURY (OBLIG|BILLS?)|\bT-BILLS?\b|"
+                    r"GOVERNMENT & AGENCY|GOVT.*PORTFOLIO|\bFUTURES?\b|\bFUT\b|\bFX\b|\bSWAPS?\b|"
+                    r"\bFORWARDS?\b|COLLATERAL|\bREPO\b|MKTLIQ|LIQUIDITY FUND|CASH MGMT|"
+                    r"^-[A-Z]{3} CASH-$", re.I)
 
 
 def net_holding_changes(rows: List[Dict[str, Any]], top: int = 25) -> Dict[str, Any]:
