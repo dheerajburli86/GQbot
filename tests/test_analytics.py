@@ -196,3 +196,20 @@ def test_markdown_is_stripped_for_telegram():
     from gq_bot.agent import plain_text
     out = plain_text("## Head\n**VTV** is cheaper.\n* one\n  * two\n- three")
     assert out == "Head\nVTV is cheaper.\n- one\n  - two\n- three"
+
+
+def test_macd_summary_never_contradicts_its_last_crossover():
+    import random
+    rnd = random.Random(7)
+    for _ in range(200):
+        xs, p = [], 100.0
+        for _ in range(120):
+            p *= 1 + rnd.uniform(-0.03, 0.03)
+            xs.append(p)
+        m = tech.macd(xs)
+        c = m["last_crossover"]
+        if c:
+            bullish = "bullish" in c["type"]
+            # no later cross exists, so the state must still match the last one
+            assert (m["histogram"] > 0) == bullish
+            assert ("above" in m["summary"]) == bullish and c["type"].split()[0] in m["summary"]

@@ -71,8 +71,16 @@ def macd(xs: Sequence[float]) -> Optional[Dict[str, Any]]:
                           "type": "bullish (MACD crossed above signal)" if hist[i] > 0
                           else "bearish (MACD crossed below signal)"}
             break
-    return {"macd": round(line[-1], 4), "signal": round(sig[-1], 4), "histogram": round(hist[-1], 4),
-            "state": "above signal" if hist[-1] > 0 else "below signal", "last_crossover": last_cross}
+    state = "above its signal line" if hist[-1] > 0 else "below its signal line"
+    if last_cross:
+        kind = "bullish" if "bullish" in last_cross["type"] else "bearish"
+        ago = last_cross["sessions_ago"]
+        when = "in the latest session" if ago == 0 else f"{ago} session{'s' if ago != 1 else ''} ago"
+        summary = f"MACD is {state}; the last crossover was {kind}, {when}."
+    else:
+        summary = f"MACD is {state}; no crossover in the history read."
+    return {"summary": summary, "macd": round(line[-1], 4), "signal": round(sig[-1], 4),
+            "histogram": round(hist[-1], 4), "state": state, "last_crossover": last_cross}
 
 
 def daily_returns(xs: Sequence[float]) -> List[float]:
