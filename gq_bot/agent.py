@@ -141,6 +141,8 @@ class Answer:
 _BOLD = re.compile(r"\*\*(.+?)\*\*|__(.+?)__", re.S)
 _BULLET = re.compile(r"^(\s*)[*•]\s+", re.M)
 _HEADING = re.compile(r"^\s*#{1,6}\s*", re.M)
+_PLUMBING = re.compile(r"^.*\b(sent to the user automatically|is sent automatically|after your text)\b.*$\n?",
+                       re.M | re.I)
 
 
 def plain_text(text: str) -> str:
@@ -148,6 +150,7 @@ def plain_text(text: str) -> str:
     text = _BOLD.sub(lambda m: m.group(1) or m.group(2), text)
     text = _BULLET.sub(lambda m: m.group(1) + "- ", text)
     text = _HEADING.sub("", text)
+    text = _PLUMBING.sub("", text)
     return text.strip()
 
 

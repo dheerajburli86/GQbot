@@ -118,7 +118,7 @@ def test_etf_tools():
     h = d.etf_holdings("u1", "QQQ", top_n=2)
     assert [x["symbol"] for x in h["top_holdings"]] == ["AAPL", "MSFT"]
     c = d.etf_changes("u1", "QQQ", days=30)
-    assert c["holdings_changes"][0]["symbol"] == "PLTR"
+    assert c["holdings_changes"]["net_added"][0]["symbol"] == "PLTR"
     assert [e["event_type"] for e in c["fund_events"]] == ["INDEX_CHANGE"]
 
 
@@ -138,3 +138,27 @@ def test_username_fallback_cannot_match_another_user_through_a_wildcard():
     assert d.get_user(999, "d_12312") is None       # `_` must not act as a wildcard
     assert d.get_user(999, "dj%") is None
     assert d.get_user(999, "A_B")["id"] == "real"   # a real underscore still matches exactly
+
+
+def test_holding_changes_are_netted_and_cash_is_ignored():
+    from gq_bot.data import net_holding_changes
+    rows = [{"action": "ADDED", "security_symbol": "X", "security_name": "Xco", "detected_at": "2026-10-01"},
+            {"action": "REMOVED", "security_symbol": "X", "security_name": "Xco", "detected_at": "2026-10-05"},
+            {"action": "ADDED", "security_symbol": "Y", "security_name": "Yco", "weight_new": 0.5, "detected_at": "2026-10-02"},
+            {"action": "REMOVED", "security_symbol": "Z", "security_name": "Zco", "detected_at": "2026-10-03"},
+            {"action": "REMOVED", "security_symbol": "NLOK", "security_name": "Gen Digital Inc", "detected_at": "2026-10-06"},
+            {"action": "ADDED", "security_symbol": "GEN", "security_name": "Gen Digital Inc", "detected_at": "2026-10-07"},
+            {"action": "ADDED", "security_symbol": "", "security_name": "-USD CASH-", "detected_at": "2026-10-04"},
+            {"action": "ADDED", "security_symbol": "", "security_name": "GOLDMAN FS TRSY OBLIG INST 468", "detected_at": "2026-10-04"},
+            {"action": "REMOVED", "security_symbol": "", "security_name": "ICE Brent Crude Oil Future 10/30/2026", "detected_at": "2026-10-04"}]
+    n = net_holding_changes(rows)
+    assert [e["symbol"] for e in n["net_added"]] == ["Y"] and [e["symbol"] for e in n["net_removed"]] == ["Z"]
+    assert n["churned_count"] == 2 and n["cash_and_derivative_lines_ignored"] == 3
+
+
+def test_watchlist_etf_changes_covers_every_etf():
+    d, *_ = make()
+    r = d.watchlist_etf_changes("u1", 90)
+    assert r["ok"] and r["etfs_checked"] >= 2
+    assert r["changed"][0]["etf"] == "QQQ" and r["changed"][0]["net_added_count"] == 1
+    assert "VOO" in r["no_net_change"]

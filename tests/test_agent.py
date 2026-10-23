@@ -161,3 +161,7 @@ def test_a_three_year_window_start_is_not_treated_as_invented():
 def test_a_macd_crossover_question_gets_no_50_200_line():
     assert A.add_cross_dates("when was the last MACD crossover?", "x", {"IWM": "on 2025-08-06"}) == "x"
     assert A.add_cross_dates("last golden or death cross?", "x", {"IWM": "on 2025-08-06"}) != "x"
+
+
+def test_delivery_plumbing_never_reaches_the_user():
+    assert A.plain_text("QQQ is up 44%.\n\nThe chart image is sent to the user automatically after your text.") == "QQQ is up 44%."

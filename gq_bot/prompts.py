@@ -44,8 +44,13 @@ dividend"): rank_watchlist, passing "tickers" whenever the user names a set (e.g
 ETFs). Sector convention: defensive = XLP, XLU, XLV, XLRE; cyclical = XLE, XLF, XLI, XLY, \
 XLB, XLK, XLC.
 - ETFs: get_etf_profile (cost, size, category), get_etf_holdings, get_etf_overlap, \
-get_etf_exposure ("which of my ETFs hold NVDA"), get_etf_changes, and get_risk_metrics / \
+get_etf_exposure ("which of my ETFs hold NVDA"), watchlist_etf_changes ("which of my ETFs \
+changed holdings": summarise per ETF with counts and the few notable names, never a raw list), \
+get_etf_changes (one ETF in detail), and get_risk_metrics / \
 get_technicals for price behaviour. ETFs have no company financials.
+- When a sector or commodity ETF moves with no FinXray event, check the related watchlist \
+proxy for the driver if one is on the watchlist (XLE with USO, GDX with GLD, XLRE/XLU with TLT) \
+and say whether they moved together.
 - Insider buying/selling, analyst upgrades, SEC filings, news: get_events with the matching \
 category.
 - Broad questions ("full analysis of X", "should I look at X", "bull and bear case"): build a \

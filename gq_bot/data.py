@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
@@ -116,6 +117,44 @@ class _TTLCache:
 
     def drop(self, key):
         self.items.pop(key, None)
+
+
+_NOISE = re.compile(r"\bCASH\b|MONEY MARKET|TRSY|TREASURY OBLIG|GOVERNMENT & AGENCY|GOVT.*PORTFOLIO|"
+                    r"\bFUTURE\b|\bFUT\b|\bFX\b|COLLATERAL|\bREPO\b|^-[A-Z]{3} CASH-$", re.I)
+
+
+def net_holding_changes(rows: List[Dict[str, Any]], top: int = 25) -> Dict[str, Any]:
+    """Collapse raw add/remove events (oldest first) into what actually changed over the window."""
+    per: Dict[str, Dict[str, Any]] = {}
+    noise = 0
+    for r in sorted(rows, key=lambda x: str(x.get("detected_at") or "")):
+        name = (r.get("security_name") or "").strip()
+        sym = (r.get("security_symbol") or "").strip()
+        if _NOISE.search(name) or _NOISE.search(sym):
+            noise += 1
+            continue
+        act = (r.get("action") or "").lower()
+        kind = "add" if "add" in act else "remove" if "remov" in act else None
+        if not kind:
+            continue
+        key = re.sub(r"[^a-z0-9]", "", name.lower()) or sym.lower()   # renames keep one key
+        e = per.setdefault(key, {"name": name or sym, "symbol": sym, "first": kind, "last": kind,
+                                 "first_at": r.get("detected_at")})
+        e.update(last=kind, last_at=r.get("detected_at"), symbol=sym or e["symbol"])
+        if r.get("weight_new") is not None:
+            e["weight_new"] = r.get("weight_new")
+    added = [e for e in per.values() if e["first"] == "add" and e["last"] == "add"]
+    removed = [e for e in per.values() if e["first"] == "remove" and e["last"] == "remove"]
+    churn = [e for e in per.values() if e["first"] != e["last"]]
+
+    def show(es):
+        es = sorted(es, key=lambda e: -(e.get("weight_new") or 0))
+        return [{"name": e["name"], "symbol": e["symbol"], "date": str(e.get("last_at") or "")[:10],
+                 **({"weight_pct": e["weight_new"]} if e.get("weight_new") is not None else {})} for e in es[:top]]
+    return {"net_added_count": len(added), "net_removed_count": len(removed),
+            "churned_count": len(churn), "cash_and_derivative_lines_ignored": noise,
+            "net_added": show(added), "net_removed": show(removed),
+            "tracked_from": str(rows[0].get("detected_at"))[:10] if rows else None}
 
 
 class GQData:
@@ -931,7 +970,7 @@ class GQData:
             changes = {t: analysis.pct(b[0]["close"], b[-1]["close"]) for t, b in in_window.items() if len(b) >= 2}
             return {"ok": True, "charted": list(series), "from": start.isoformat(), "to": end.isoformat(),
                     "change_pct": changes, "refused": refused, "_image": png,
-                    "note": "The chart image is sent to the user automatically after your text."}
+                    "note": "Mention the chart in one line; do not describe how it is delivered."}
         return self._safe("chart", run)
 
     # ── FinXray: ETFs ─────────────────────────────────────────────────────────
@@ -1026,6 +1065,46 @@ class GQData:
                     "name": rows[0].get("security_name") if rows else None}
         return self._safe("ETF exposure", run)
 
+    def _change_rows(self, tickers: List[str], since: datetime) -> Dict[str, List[Dict[str, Any]]]:
+        """Every holdings change in the window, oldest first, paged; not just the newest few."""
+        out: Dict[str, List[Dict[str, Any]]] = {t: [] for t in tickers}
+        for k in range(0, len(tickers), CHUNK):
+            page = 0
+            while page < 20:
+                chunk = self._rows(self.fx.table("etf_holdings_changes")
+                                   .select("ticker, action, security_symbol, security_name, weight_prev, "
+                                           "weight_new, detected_at")
+                                   .in_("ticker", tickers[k:k + CHUNK]).gte("detected_at", since.isoformat())
+                                   .order("detected_at", desc=False).range(page * PAGE, page * PAGE + PAGE - 1))
+                for r in chunk:
+                    out.setdefault(r.get("ticker"), []).append(r)
+                if len(chunk) < PAGE:
+                    break
+                page += 1
+        return out
+
+    def watchlist_etf_changes(self, user_id, days: int = 90) -> Dict[str, Any]:
+        """Net holdings changes for every ETF on the watchlist, one row per ETF."""
+        days = max(1, min(int(days or 90), MAX_EVENT_DAYS))
+        since = datetime.now(timezone.utc) - timedelta(days=days)
+
+        def run():
+            etfs = [t for t, i in self._instruments_for(self.watchlist(user_id)).items()
+                    if i.get("universe") == "us_etfs"]
+            if not etfs:
+                return {"ok": False, "reason": "no_etfs", "message": "There are no ETFs on your watchlist."}
+            nets = {t: net_holding_changes(rows, top=5) for t, rows in self._change_rows(etfs, since).items()
+                    if t in etfs}
+            changed = sorted(((t, n) for t, n in nets.items() if n["net_added_count"] or n["net_removed_count"]),
+                             key=lambda x: -(x[1]["net_added_count"] + x[1]["net_removed_count"]))
+            return {"ok": True, "days": days, "etfs_checked": len(etfs),
+                    "changed": [{"etf": t, **n} for t, n in changed],
+                    "no_net_change": sorted(t for t, n in nets.items()
+                                            if not (n["net_added_count"] or n["net_removed_count"])),
+                    "note": "Net of the window: a name added then removed counts as churn, and cash, "
+                            "money-market, currency and futures lines are excluded."}
+        return self._safe("watchlist ETF changes", run)
+
     def etf_changes(self, user_id, ticker: str, days: int = 30) -> Dict[str, Any]:
         t, no = self._scoped(user_id, ticker)
         if no:
@@ -1034,14 +1113,7 @@ class GQData:
         since = datetime.now(timezone.utc) - timedelta(days=days)
 
         def changes():
-            return [{"action": r.get("action"), "symbol": r.get("security_symbol"),
-                     "name": r.get("security_name"), "weight_prev": r.get("weight_prev"),
-                     "weight_new": r.get("weight_new"), "detected_at": r.get("detected_at")}
-                    for r in self._rows(self.fx.table("etf_holdings_changes")
-                                        .select("action, security_symbol, security_name, weight_prev, "
-                                                "weight_new, detected_at")
-                                        .eq("ticker", t).gte("detected_at", since.isoformat())
-                                        .order("detected_at", desc=True).limit(30))]
+            return net_holding_changes(self._change_rows([t], since)[t])
 
         def fund_events():
             skip = {"NO_MATCH", "NO_DOC", "ERROR", "NO_SERIES"}
@@ -1055,6 +1127,6 @@ class GQData:
                     if (r.get("status") or "") not in skip]
 
         return {"ok": True, "ticker": t, "days": days,
-                "holdings_changes": self._safe("ETF holdings changes", changes, default=[]),
+                "holdings_changes": self._safe("ETF holdings changes", changes, default={}),
                 "fund_events": self._safe("ETF fund events", fund_events, default=[]),
                 "alerts": self._safe("FinXray events", lambda: self._events(t, since), default=[])}

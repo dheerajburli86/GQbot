@@ -133,6 +133,11 @@ TOOLS: List[Dict[str, Any]] = [
         "Which ETFs on the user's watchlist hold a given stock, and at what weight. The stock does "
         "not need to be on the watchlist.",
         {"symbol": {"type": "string", "description": "Stock ticker to look for, e.g. NVDA."}}, ["symbol"]),
+    _fn("watchlist_etf_changes",
+        "Net holdings changes across EVERY ETF on the watchlist over a window: per ETF, how many "
+        "names were added and removed (after netting out churn and ignoring cash, money-market and "
+        "futures lines) and the main ones. Use for 'which of my ETFs changed holdings'.",
+        {"days": _DAYS(90, 365)}, []),
     _fn("get_etf_changes",
         "What changed in an ETF: holdings added or removed, SEC fund actions (liquidation, "
         "merger, fee, index change) and FinXray alerts. ETFs only.",
@@ -187,6 +192,7 @@ class ToolRunner:
             "get_etf_overlap": lambda ticker_a, ticker_b: d.etf_overlap(uid, ticker_a, ticker_b),
             "get_etf_exposure": lambda symbol: d.etf_exposure(uid, symbol),
             "get_etf_changes": lambda ticker, days=30: d.etf_changes(uid, ticker, days),
+            "watchlist_etf_changes": lambda days=90: d.watchlist_etf_changes(uid, days),
         }
 
     @property
