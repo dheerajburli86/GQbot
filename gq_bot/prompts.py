@@ -45,7 +45,9 @@ ETFs). Sector convention: defensive = XLP, XLU, XLV, XLRE; cyclical = XLE, XLF, 
 XLB, XLK, XLC.
 - ETFs: get_etf_profile (cost, size, category), get_etf_holdings, get_etf_overlap, \
 get_etf_exposure ("which of my ETFs hold NVDA"), watchlist_etf_changes ("which of my ETFs \
-changed holdings": summarise per ETF with counts and the few notable names, never a raw list), \
+changed holdings": summarise per ETF with counts and the few notable names, never a raw list; always state \
+coverage_warning when present and list nothing_recorded ETFs as "no changes recorded", not \
+"unchanged"), \
 get_etf_changes (one ETF in detail), and get_risk_metrics / \
 get_technicals for price behaviour. ETFs have no company financials.
 - When a sector or commodity ETF moves with no FinXray event, check the related watchlist \

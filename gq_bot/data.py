@@ -1095,16 +1095,26 @@ class GQData:
                     if i.get("universe") == "us_etfs"]
             if not etfs:
                 return {"ok": False, "reason": "no_etfs", "message": "There are no ETFs on your watchlist."}
-            nets = {t: net_holding_changes(rows, top=5) for t, rows in self._change_rows(etfs, since).items()
-                    if t in etfs}
+            raw = {t: rows for t, rows in self._change_rows(etfs, since).items() if t in etfs}
+            nets = {t: net_holding_changes(rows, top=5) for t, rows in raw.items() if rows}
             changed = sorted(((t, n) for t, n in nets.items() if n["net_added_count"] or n["net_removed_count"]),
                              key=lambda x: -(x[1]["net_added_count"] + x[1]["net_removed_count"]))
-            return {"ok": True, "days": days, "etfs_checked": len(etfs),
-                    "changed": [{"etf": t, **n} for t, n in changed],
-                    "no_net_change": sorted(t for t, n in nets.items()
-                                            if not (n["net_added_count"] or n["net_removed_count"])),
-                    "note": "Net of the window: a name added then removed counts as churn, and cash, "
-                            "money-market, currency and futures lines are excluded."}
+            firsts = [str(r[0].get("detected_at"))[:10] for r in raw.values() if r]
+            recording_since = min(firsts) if firsts else None
+            out = {"ok": True, "days": days, "window_from": since.date().isoformat(),
+                   "recording_since": recording_since, "etfs_checked": len(etfs),
+                   "changed": [{"etf": t, **n} for t, n in changed],
+                   "changes_cancelled_out": sorted(t for t, n in nets.items()
+                                                   if not (n["net_added_count"] or n["net_removed_count"])),
+                   "nothing_recorded": sorted(t for t, r in raw.items() if not r),
+                   "note": "Net of the window: a name added then removed counts as churn, and cash, "
+                           "money-market, currency and futures lines are excluded."}
+            if recording_since and recording_since > out["window_from"]:
+                out["coverage_warning"] = (
+                    f"FinXray has only recorded holdings changes since {recording_since}, so this covers "
+                    f"{recording_since} onward, not the full {days} days. ETFs in nothing_recorded may not "
+                    f"be tracked at all; do not describe them as unchanged.")
+            return out
         return self._safe("watchlist ETF changes", run)
 
     def etf_changes(self, user_id, ticker: str, days: int = 30) -> Dict[str, Any]:

@@ -166,4 +166,5 @@ def test_watchlist_etf_changes_covers_every_etf():
     r = d.watchlist_etf_changes("u1", 90)
     assert r["ok"] and r["etfs_checked"] >= 2
     assert r["changed"][0]["etf"] == "QQQ" and r["changed"][0]["net_added_count"] == 1
-    assert "VOO" in r["no_net_change"]
+    assert "VOO" in r["nothing_recorded"] and r["changes_cancelled_out"] == []
+    assert r["recording_since"] > r["window_from"] and "only recorded" in r["coverage_warning"]
