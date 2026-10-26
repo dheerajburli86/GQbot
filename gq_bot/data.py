@@ -15,7 +15,8 @@ standalone question about a non-watchlisted one.
 
 Sources
   FinXray US   users, watchlists, alerts, etf_master, etf_company_data,
-               etf_expenses, etf_holdings, etf_holdings_changes, etf_fund_events
+               etf_expenses, etf_holdings, etf_holdings_changes, etf_fund_events;
+               mutual funds and fund reference data are read in funds.py
   Heatmap      instruments, returns_latest, price_history, fundamentals
                (raw FMP statements + profile), us_stock_fundamentals (legacy
                fallback), tech_trend_identification (GQ dashboard signals)
@@ -36,6 +37,8 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from . import analysis, financials as fin, technicals as tech
+
+from .funds import FundsMixin
 
 log = logging.getLogger(__name__)
 
@@ -159,7 +162,9 @@ def net_holding_changes(rows: List[Dict[str, Any]], top: int = 25) -> Dict[str, 
             "tracked_from": str(rows[0].get("detected_at"))[:10] if rows else None}
 
 
-class GQData:
+class GQData(FundsMixin):
+    BENCH = BENCHMARKS
+
     def __init__(self, finxray, heatmap=None, clock: Callable[[], float] = time.monotonic,
                  today: Callable[[], date] = date.today, workers: int = 6):
         self.fx = finxray
@@ -172,6 +177,7 @@ class GQData:
         self._fund = _TTLCache(1800, clock)
         self._bars_cache = _TTLCache(600, clock)
         self._peers = _TTLCache(1800, clock)
+        self._mfc = _TTLCache(1800, clock)
 
     # ── plumbing ──────────────────────────────────────────────────────────────
     @staticmethod
@@ -258,10 +264,19 @@ class GQData:
         """Watchlist tickers with name and type, for the prompt's ticker resolution."""
         tickers = self.watchlist(user_id)
         found = self._instruments_for(tickers)
-        return [{"ticker": t,
-                 "name": (found.get(t) or {}).get("name"),
-                 "type": {"us_etfs": "etf", "us_stocks": "stock"}.get(
-                     (found.get(t) or {}).get("universe"), "unknown")} for t in tickers]
+        mfs = self._safe("mf_master", lambda: self._mf_many([t for t in tickers if t not in found]), default={})
+        out = []
+        for t in tickers:
+            if t in found:
+                out.append({"ticker": t, "name": found[t].get("name"),
+                            "type": {"us_etfs": "etf", "us_stocks": "stock"}.get(found[t].get("universe"), "unknown")})
+            elif t in mfs:
+                m = mfs[t]
+                out.append({"ticker": t, "type": "mutual fund",
+                            "name": " ".join(x for x in (m.get("series_name"), m.get("class_name")) if x) or None})
+            else:
+                out.append({"ticker": t, "name": None, "type": "unknown"})
+        return out
 
     def _scoped(self, user_id, ticker: str) -> Tuple[Optional[str], Optional[Dict]]:
         t = norm(ticker)
@@ -601,6 +616,38 @@ class GQData:
                          "dates; dates come from last_50_200_cross / ma_50_200_summary.")
         return out
 
+    def _gq_indicators(self, inst_id) -> Dict[str, Any]:
+        """Extra daily signals the dashboard computes: RSI trend/divergence, candlestick patterns,
+        all-time-high distance and GMMA compression/breakouts."""
+        out: Dict[str, Any] = {}
+
+        def first(table, cols, **eqs):
+            q = self.hm.table(table).select(cols).eq("instrument_id", inst_id)
+            for k, v in eqs.items():
+                q = q.eq(k, v)
+            return self._rows(q.limit(5))
+        r = self._safe("RSI table", lambda: first("tech_indicators_rsi", "rsi_trend, rsi_divergence, as_of_date",
+                                                  timeframe="D"), default=[])
+        if r and (r[0].get("rsi_trend") or r[0].get("rsi_divergence")):
+            out["rsi"] = {k: v for k, v in r[0].items() if v}
+        c = self._safe("candlestick table", lambda: first("tech_indicators_candlestick",
+                                                          "pattern_name, pattern_type, confidence, as_of_date",
+                                                          timeframe="D"), default=[])
+        if c:
+            latest = max(str(x.get("as_of_date") or "") for x in c)
+            out["candlestick_patterns"] = [{k: v for k, v in x.items() if v is not None}
+                                           for x in c if str(x.get("as_of_date") or "") == latest]
+        a = self._safe("ATH table", lambda: first("tech_indicators_ath", "ath, dist_from_ath_pct, is_new_ath, as_of_date"),
+                       default=[])
+        if a:
+            out["all_time_high"] = {k: v for k, v in a[0].items() if v is not None}
+        g = self._safe("GMMA table", lambda: self._rows(
+            self.hm.table("gmma_alerts").select("timeframe, grp, strength, breakout, breakout_dir, bars_compressed, as_of_date")
+            .eq("instrument_id", inst_id).order("as_of_date", desc=True).limit(4)), default=[])
+        if g:
+            out["gmma"] = [{k: v for k, v in x.items() if v not in (None, False)} for x in g]
+        return out
+
     def technicals(self, user_id, ticker: str) -> Dict[str, Any]:
         t, no = self._scoped(user_id, ticker)
         if no:
@@ -616,6 +663,9 @@ class GQData:
             sig = self._safe("GQ trend signals", lambda: self._gq_signals(inst["id"]), default=[])
             if sig:
                 res["gq_dashboard_trend_signals"] = sig
+            extra = self._safe("GQ indicator tables", lambda: self._gq_indicators(inst["id"]), default={})
+            if extra:
+                res["gq_dashboard_indicators"] = extra
             return res
         return self._safe("technicals", run)
 

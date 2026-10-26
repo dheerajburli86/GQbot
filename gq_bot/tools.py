@@ -11,10 +11,11 @@ import logging
 from typing import Optional, Any, Callable, Dict, List
 
 from .data import EVENT_CATEGORIES, RANK_METRICS, GQData
+from .funds import NO_NAV
 
 log = logging.getLogger(__name__)
 
-MAX_RESULT_CHARS = 14000
+MAX_RESULT_CHARS = 20000
 
 _T = {"type": "string", "description": "US ticker symbol, e.g. AAPL or SPY."}
 
@@ -117,31 +118,64 @@ TOOLS: List[Dict[str, Any]] = [
         "to see, plot, chart or visualise prices, and it is a good companion to comparisons.",
         {"tickers": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
          "days": _DAYS(180, 3650), "start_date": _START, "end_date": _END}, ["tickers"]),
-    _fn("get_etf_profile",
-        "ETF facts: fund house, category, AUM, NAV, inception, expense ratio, sector and country "
-        "weights where stored, plus its price snapshot. ETFs only.",
+    _fn("get_fund_profile",
+        "What an ETF or MUTUAL FUND is: fund family, category, size (AUM / net assets), inception, "
+        "expense ratio with its breakdown (management fee, other costs, fee waiver), the current "
+        "managers and their tenure, listing status (closing ETFs are flagged) and, for ETFs, the price "
+        "snapshot. Mutual funds have no price data.",
         {"ticker": _T}, ["ticker"]),
-    _fn("get_etf_holdings",
-        "Top holdings of an ETF by portfolio weight and their combined weight. ETFs only.",
-        {"ticker": _T, "top_n": {"type": "integer", "description": "1-25.", "default": 10}},
-        ["ticker"]),
-    _fn("get_etf_overlap",
-        "How much two watchlist ETFs overlap: shared holdings, weight overlap and the biggest "
-        "common positions.",
+    _fn("get_fund_holdings",
+        "Top holdings of an ETF or mutual fund with weights, concentration (top 5/10/25) and the "
+        "portfolio breakdown: sector and country, plus for mutual funds asset class (equity/debt/cash) "
+        "and market-cap mix. Mutual-fund holdings are from the latest quarterly N-PORT filing.",
+        {"ticker": _T, "top_n": {"type": "integer", "description": "1-25.", "default": 10}}, ["ticker"]),
+    _fn("get_fund_lookthrough",
+        "Look inside a fund: its top holdings, each with its own return over a window, its "
+        "CONTRIBUTION to the fund (weight x return), RSI zone and distance from its 52-week high. "
+        "Use for 'what drove QQQ this month', 'how are my fund's top holdings doing', 'are any of "
+        "VOO's big names overbought', and to explain an ETF's move.",
+        {"ticker": _T, "window": {"type": "string", "enum": ["1d", "1w", "1m", "3m", "6m", "ytd", "1y"],
+                                  "default": "1m"},
+         "top_n": {"type": "integer", "description": "3-30.", "default": 15}}, ["ticker"]),
+    _fn("get_fund_overlap",
+        "How much two watchlist funds overlap (ETF or mutual fund, in any mix): shared holdings, "
+        "weight overlap and the biggest common positions.",
         {"ticker_a": _T, "ticker_b": _T}, ["ticker_a", "ticker_b"]),
-    _fn("get_etf_exposure",
-        "Which ETFs on the user's watchlist hold a given stock, and at what weight. The stock does "
-        "not need to be on the watchlist.",
+    _fn("get_fund_exposure",
+        "Which ETFs AND mutual funds on the user's watchlist hold a given stock, and at what weight. "
+        "The stock does not need to be on the watchlist.",
         {"symbol": {"type": "string", "description": "Stock ticker to look for, e.g. NVDA."}}, ["symbol"]),
-    _fn("watchlist_etf_changes",
-        "Net holdings changes across EVERY ETF on the watchlist over a window: per ETF, how many "
-        "names were added and removed (after netting out churn and ignoring cash, money-market and "
-        "futures lines) and the main ones. Use for 'which of my ETFs changed holdings'.",
+    _fn("compare_funds",
+        "Funds side by side, optionally ranked: net expense ratio, management fee, fee waiver, AUM, "
+        "holdings count, top-10 concentration, manager tenure, and 1Y/5Y returns for ETFs. Omit "
+        "tickers to cover every fund on the watchlist ('which of my mutual funds is cheapest', "
+        "'rank my funds by fees', 'which fund has the most experienced manager').",
+        {"tickers": {"type": "array", "items": {"type": "string"}, "maxItems": 40},
+         "sort_by": {"type": "string", "enum": ["net_expense_ratio", "management_fee", "aum", "holdings_count",
+                                                "top10_weight_pct", "longest_manager_tenure_years", "ret_1y",
+                                                "ret_5y"]},
+         "order": {"type": "string", "enum": ["asc", "desc"], "default": "asc"}}, []),
+    _fn("get_fund_changes",
+        "What changed in ONE fund: holdings added, exited, increased or cut (ETFs daily; mutual funds "
+        "quarter to quarter from N-PORT), manager changes, SEC fund actions (liquidation, merger, fee, "
+        "index change) and FinXray alerts.",
+        {"ticker": _T, "days": _DAYS(120, 730)}, ["ticker"]),
+    _fn("watchlist_fund_changes",
+        "Holdings changes across EVERY fund on the watchlist: ETFs netted over the window (churn, "
+        "cash and futures removed) and mutual funds from their latest quarterly filings. Use for "
+        "'which of my funds changed holdings'.",
         {"days": _DAYS(90, 365)}, []),
-    _fn("get_etf_changes",
-        "What changed in an ETF: holdings added or removed, SEC fund actions (liquidation, "
-        "merger, fee, index change) and FinXray alerts. ETFs only.",
-        {"ticker": _T, "days": _DAYS(30, 365)}, ["ticker"]),
+    _fn("get_fund_managers",
+        "Fund managers: with a ticker, that fund's current team, roles and tenure plus recent "
+        "changes; without one, every manager change across all funds on the watchlist ('did any of "
+        "my funds change manager').",
+        {"ticker": _T, "days": _DAYS(365, 1825)}, []),
+    _fn("market_overview",
+        "US market context across every US stock on the GQuants heatmap: SPY/QQQ/IWM/DIA returns, "
+        "each GICS sector's median and cap-weighted return and % of stocks up, overall breadth, and "
+        "counts of new 52-week highs/lows and RSI extremes. Use for 'how is the market today', "
+        "'which sectors are leading', or as context for a move.",
+        {"window": {"type": "string", "enum": ["1d", "1w", "1m", "3m", "6m", "ytd", "1y"], "default": "1d"}}, []),
 ]
 
 
@@ -187,12 +221,23 @@ class ToolRunner:
                 d.rank_watchlist(uid, metric, order, limit, type_filter, tickers),
             "price_chart": lambda tickers, days=180, start_date=None, end_date=None:
                 d.chart(uid, tickers, days, start_date, end_date),
-            "get_etf_profile": lambda ticker: d.etf_profile(uid, ticker),
-            "get_etf_holdings": lambda ticker, top_n=10: d.etf_holdings(uid, ticker, top_n),
-            "get_etf_overlap": lambda ticker_a, ticker_b: d.etf_overlap(uid, ticker_a, ticker_b),
-            "get_etf_exposure": lambda symbol: d.etf_exposure(uid, symbol),
-            "get_etf_changes": lambda ticker, days=30: d.etf_changes(uid, ticker, days),
-            "watchlist_etf_changes": lambda days=90: d.watchlist_etf_changes(uid, days),
+            "get_fund_profile": lambda ticker: d.fund_profile(uid, ticker),
+            "get_fund_holdings": lambda ticker, top_n=10: d.fund_holdings(uid, ticker, top_n),
+            "get_fund_lookthrough": lambda ticker, window="1m", top_n=15: d.fund_lookthrough(uid, ticker, window, top_n),
+            "get_fund_overlap": lambda ticker_a, ticker_b: d.fund_overlap(uid, ticker_a, ticker_b),
+            "get_fund_exposure": lambda symbol: d.fund_exposure(uid, symbol),
+            "compare_funds": lambda tickers=None, sort_by=None, order="asc": d.compare_funds(uid, tickers, sort_by, order),
+            "get_fund_changes": lambda ticker, days=120: d.fund_changes(uid, ticker, days),
+            "watchlist_fund_changes": lambda days=90: d.watchlist_fund_changes(uid, days),
+            "get_fund_managers": lambda ticker=None, days=365: d.fund_managers(uid, ticker, days),
+            "market_overview": lambda window="1d": d.market_overview(window),
+            # older names, still accepted if a model or a saved conversation uses them
+            "get_etf_profile": lambda ticker: d.fund_profile(uid, ticker),
+            "get_etf_holdings": lambda ticker, top_n=10: d.fund_holdings(uid, ticker, top_n),
+            "get_etf_overlap": lambda ticker_a, ticker_b: d.fund_overlap(uid, ticker_a, ticker_b),
+            "get_etf_exposure": lambda symbol: d.fund_exposure(uid, symbol),
+            "get_etf_changes": lambda ticker, days=30: d.fund_changes(uid, ticker, days),
+            "watchlist_etf_changes": lambda days=90: d.watchlist_fund_changes(uid, days),
         }
 
     @property
@@ -219,7 +264,7 @@ class ToolRunner:
             allowed = fn.__code__.co_varnames[:fn.__code__.co_argcount]
             args = {k: v for k, v in args.items() if k in allowed and v is not None}
             # A ranking of a named set must not fall back to the watchlist's top 10.
-            if name == "rank_watchlist" and not args.get("tickers") and len(self.named) >= 2:
+            if name in ("rank_watchlist", "compare_funds") and not args.get("tickers") and len(self.named) >= 2:
                 args["tickers"] = self.named
             try:
                 result = fn(**args)
@@ -228,6 +273,11 @@ class ToolRunner:
             except Exception as e:
                 log.exception("[tools] %s crashed", name)
                 result = {"ok": False, "reason": "tool_error", "message": f"{name} failed: {e}"}
+        if isinstance(result, dict) and result.get("reason") == "no_price_data" and result.get("ticker"):
+            if self.data._kinds([result["ticker"]]).get(result["ticker"]) == "mutual_fund":
+                result = {**result, "reason": "mutual_fund_no_prices",
+                          "message": NO_NAV + " Use get_fund_profile, get_fund_holdings, get_fund_changes, "
+                                              "get_fund_managers or compare_funds for it."}
         if isinstance(result, dict) and isinstance(result.get("_image"), (bytes, bytearray)):
             if len(self.images) < 3:
                 self.images.append(bytes(result["_image"]))

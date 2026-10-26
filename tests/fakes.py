@@ -163,6 +163,56 @@ def world(**overrides):
                              "excerpt": "Index methodology change", "created_at": _iso_days_ago(2),
                              "filing_date": "2026-10-14", "filing_url": "https://sec.gov/y"},
                             {"tickers": ["QQQ"], "status": "NO_MATCH", "created_at": _iso_days_ago(2)}],
+        # ── mutual funds (ABALX) and fund reference data ──
+        "mf_master": [{"ticker": "ABALX", "series_id": "S-BAL", "class_id": "C-A", "cik": "1",
+                       "series_name": "American Balanced Fund", "class_name": "Class A",
+                       "entity_name": "AMERICAN BALANCED FUND", "fund_family": "American Funds",
+                       "category": "Allocation", "aum": 250e9, "expense_ratio": 0.56, "fund_type": "MUTUAL_FUND"}],
+        "mf_holdings_state": [{"series_id": "S-BAL", "rep_date": "2026-06-30", "net_assets": 260e9, "holdings_count": 4}],
+        "mf_holdings": [
+            {"series_id": "S-BAL", "security_key": "US0378331005", "security_name": "Apple Inc", "ticker": "AAPL",
+             "asset_category": "EC", "portfolio_pct": 4.0, "rep_date": "2026-06-30"},
+            {"series_id": "S-BAL", "security_key": "US5949181045", "security_name": "Microsoft Corp", "ticker": None,
+             "asset_category": "EC", "portfolio_pct": 5.0, "rep_date": "2026-06-30"},
+            {"series_id": "S-BAL", "security_key": "US912828ZT0", "security_name": "US Treasury Note 2031",
+             "asset_category": "DBT", "portfolio_pct": 10.0, "rep_date": "2026-06-30"},
+            {"series_id": "S-BAL", "security_key": "CASHX", "security_name": "Capital Group Central Cash",
+             "asset_category": "STIV", "portfolio_pct": 3.0, "rep_date": "2026-06-30"}],
+        "mf_security_master": [
+            {"security_key": "US0378331005", "ticker": "AAPL", "sector": "Technology", "cap_class": "MEGA_CAP", "country": "US"},
+            {"security_key": "US5949181045", "ticker": "MSFT", "sector": "Technology", "cap_class": "MEGA_CAP", "country": "US"},
+            {"security_key": "US912828ZT0", "country": "US"}],
+        "mf_holdings_changes": [
+            {"series_id": "S-BAL", "security_key": "US5949181045", "security_name": "Microsoft Corp", "action": "RESIZED",
+             "weight_prev": 4.0, "weight_new": 5.0, "rep_date_from": "2026-03-31", "rep_date_to": "2026-06-30"},
+            {"series_id": "S-BAL", "security_key": "XOM", "security_name": "Exxon Mobil", "action": "REMOVED",
+             "weight_prev": 1.2, "weight_new": None, "rep_date_from": "2026-03-31", "rep_date_to": "2026-06-30"},
+            {"series_id": "S-BAL", "security_key": "US0378331005", "security_name": "Apple Inc", "action": "ADDED",
+             "weight_prev": None, "weight_new": 4.0, "rep_date_from": "2026-03-31", "rep_date_to": "2026-06-30"}],
+        "mf_managers": [
+            {"series_id": "S-BAL", "manager_key": "jane", "manager_name": "Jane Doe", "role": "lead",
+             "since_year": 2010, "since_month": 1, "is_current": True},
+            {"series_id": "S-BAL", "manager_key": "bob", "manager_name": "Bob Roe", "since_year": 2024,
+             "is_current": True},
+            {"series_id": "S-BAL", "manager_key": "old", "manager_name": "Old Hand", "since_year": 2001,
+             "is_current": False}],
+        "mf_manager_events": [{"series_id": "S-BAL", "series_name": "American Balanced Fund", "manager_name": "Old Hand",
+                               "event_type": "REMOVED", "filing_date": (TODAY - timedelta(days=40)).isoformat(),
+                               "form": "497", "filing_url": "https://sec.gov/m"}],
+        "mf_expense_breakdown": [
+            {"ticker": "ABALX", "management_fee": 0.21, "other_expenses": 0.1, "gross_expense_ratio": 0.6,
+             "fee_waiver": -0.04, "net_expense_ratio": 0.56, "filing_date": "2026-03-01"},
+            {"ticker": "ABALX", "net_expense_ratio": 0.9, "filing_date": "2020-03-01"}],
+        "mf_fund_events": [{"tickers": ["ABALX"], "status": "QUEUED", "form": "497", "event_type": "FEE_CHANGE",
+                            "excerpt": "Fee waiver extended", "filing_date": (TODAY - timedelta(days=10)).isoformat()}],
+        "mf_scheme_events": [],
+        "fund_universe": [{"ticker": "QQQ", "series_id": "S-QQQ", "fund_type": "ETF"}],
+        "fund_managers": [{"series_id": "S-QQQ", "manager_key": "team", "manager_name": "Index Team",
+                           "since_year": 2015, "is_current": True}],
+        "fund_manager_events": [],
+        "etf_expense_breakdown": [{"ticker": "QQQ", "management_fee": 0.2, "net_expense_ratio": 0.2,
+                                   "filing_date": "2026-01-20"}],
+        "etf_listing_state": [{"ticker": "VOO", "status": "ACTIVE"}],
     }
     heat = {
         "instruments": [
@@ -201,6 +251,23 @@ def world(**overrides):
             + [{**b, "instrument_id": "i-qqq"} for b in
                [{"date": (TODAY - timedelta(days=d)).isoformat(), "close": c} for d, c in [(6, 480.0), (0, 476.16)]]]
             + [{**b, "instrument_id": "i-msft"} for b in series(300.0, 420)],
+        "tech_indicators_rsi": [
+            {"instrument_id": "i-aapl", "timeframe": "D", "universe": "us_stocks", "rsi14": 28.0, "rsi_zone": "oversold",
+             "rsi_trend": "falling", "rsi_divergence": "positive"},
+            {"instrument_id": "i-msft", "timeframe": "D", "universe": "us_stocks", "rsi14": 55.0, "rsi_zone": "40-60"},
+            {"instrument_id": "i-nvda", "timeframe": "D", "universe": "us_stocks", "rsi14": 75.0, "rsi_zone": "overbought"}],
+        "tech_indicators_52w": [
+            {"instrument_id": "i-aapl", "universe": "us_stocks", "dist_from_high_pct": -20.0, "is_new_52w_high": False,
+             "is_new_52w_low": True},
+            {"instrument_id": "i-nvda", "universe": "us_stocks", "dist_from_high_pct": 0.0, "is_new_52w_high": True,
+             "is_new_52w_low": False}],
+        "tech_indicators_candlestick": [
+            {"instrument_id": "i-msft", "timeframe": "D", "pattern_name": "Hammer", "pattern_type": "bullish",
+             "confidence": 70, "as_of_date": "2026-10-16"},
+            {"instrument_id": "i-msft", "timeframe": "D", "pattern_name": "Doji", "pattern_type": "neutral",
+             "confidence": 50, "as_of_date": "2026-10-01"}],
+        "tech_indicators_ath": [{"instrument_id": "i-msft", "ath": 700.0, "dist_from_ath_pct": -1.5}],
+        "gmma_alerts": [],
         "fundamentals": [{"instrument_id": "i-aapl", **fmp(100e9, 25e9)},
                          {"instrument_id": "i-amd", **fmp(7e9, 1e9, growth=0.05)},
                          {"instrument_id": "i-intc", **fmp(13e9, -1e9, growth=-0.02)},
