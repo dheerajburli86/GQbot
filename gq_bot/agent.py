@@ -109,6 +109,15 @@ def add_cross_dates(question: str, text: str, summaries: Dict[str, str]) -> str:
     return text + ("\n\n" + "\n".join(extra) if extra else "")
 
 
+_MONEY = re.compile(r"\$\s?(\d{1,3}(?:,\d{3})+|\d{4,})(\.\d+)?(?![\d,]*\s?[KMBT]\b)(?!\.?\d)")
+_NUM = re.compile(r"-?\d+(?:\.\d+)?")
+
+
+def _near_any(value: float, pool_numbers: List[float]) -> bool:
+    tol = max(1.0, abs(value) * 0.001)      # whole-dollar rounding of a computed amount is fine
+    return any(abs(value - x) <= tol for x in pool_numbers)
+
+
 def unsourced_figures(text: str, sources: List[str]) -> List[str]:
     """Figures in the answer that appear nowhere in what the model was given this turn."""
     pool = " ".join(sources)
@@ -116,6 +125,13 @@ def unsourced_figures(text: str, sources: List[str]) -> List[str]:
     for m in _FIGURE.finditer(text or ""):
         core = re.sub(r"[^\d.]", "", m.group(0)).strip(".")
         if core and core not in pool:
+            out.append(m.group(0))
+    nums = None
+    for m in _MONEY.finditer(text or ""):
+        value = float(m.group(1).replace(",", "") + (m.group(2) or ""))
+        if nums is None:
+            nums = [float(x) for x in _NUM.findall(pool.replace(",", ""))]
+        if not _near_any(value, nums):
             out.append(m.group(0))
     return out
 

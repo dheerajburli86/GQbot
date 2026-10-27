@@ -170,6 +170,41 @@ TOOLS: List[Dict[str, Any]] = [
         "changes; without one, every manager change across all funds on the watchlist ('did any of "
         "my funds change manager').",
         {"ticker": _T, "days": _DAYS(365, 1825)}, []),
+    _fn("get_performance",
+        "Return of a watchlist stock or ETF over ANY dated period, with annualised return, max drawdown, best/worst "
+        "day, volatility and the excess over a benchmark. Pass amount for a what-if lump sum ('what if I had put "
+        "$10,000 in QQQ in Jan 2023') and monthly_amount for a monthly-investing what-if. Price return only, no "
+        "dividends. Use for 'how did X do since/in <period>' and 'what would I have made'.",
+        {"ticker": _T, "start_date": _START, "end_date": _END,
+         "amount": {"type": "number", "description": "Optional lump sum in USD invested on the first session."},
+         "monthly_amount": {"type": "number", "description": "Optional USD invested on the first session of each month."},
+         "benchmark": {"type": "string", "description": "Comparison ticker, default SPY.", "default": "SPY"}},
+        ["ticker"]),
+    _fn("get_calendar_returns",
+        "Year-by-year returns (partial first/last years flagged), best and worst months, % of positive months and "
+        "average return by calendar month, with the gap to a benchmark each year. Use for 'how has X done each "
+        "year', 'best/worst year', seasonality, 'is X a good September performer'.",
+        {"ticker": _T, "years": {"type": "integer", "description": "Years of history (1-10).", "default": 10},
+         "benchmark": {"type": "string", "default": "SPY"}}, ["ticker"]),
+    _fn("get_drawdowns",
+        "The deepest peak-to-trough falls (5%+) with peak, trough and recovery dates, how long each took, and how far "
+        "the price is below its window high now. Use for 'worst drawdown', 'how long to recover', 'how far from the "
+        "high', 'how bad did it get in 2022'.",
+        {"ticker": _T, "days": _DAYS(1825, 3650), "top": {"type": "integer", "default": 5}}, ["ticker"]),
+    _fn("watchlist_correlation",
+        "Correlation of daily returns between watchlist holdings (stocks and ETFs; mutual funds have no prices): "
+        "matrix, most and least correlated pairs, and which holdings are the best diversifiers. Omit tickers for the "
+        "whole watchlist. Use for 'how diversified am I', 'which of my holdings move together'.",
+        {"tickers": {"type": "array", "items": {"type": "string"}}, "days": _DAYS(365, 3650)}, []),
+    _fn("portfolio_exposure",
+        "Combined look-through of the watchlist's ETFs and mutual funds: the biggest stocks across all of them, which "
+        "names several funds repeat, and the combined sector and asset-class mix. Equal-weighted unless the user "
+        "gives weights ({'QQQ': 40, 'VOO': 60}). Use for 'what do I own in total', 'combined sector exposure', "
+        "'am I doubling up', 'how concentrated is my portfolio'.",
+        {"tickers": {"type": "array", "items": {"type": "string"}},
+         "weights": {"type": "object", "additionalProperties": {"type": "number"},
+                     "description": "Optional percent per fund ticker."},
+         "top_n": {"type": "integer", "default": 15}}, []),
     _fn("market_overview",
         "US market context across every US stock on the GQuants heatmap: SPY/QQQ/IWM/DIA returns, "
         "each GICS sector's median and cap-weighted return and % of stocks up, overall breadth, and "
@@ -177,6 +212,39 @@ TOOLS: List[Dict[str, Any]] = [
         "'which sectors are leading', or as context for a move.",
         {"window": {"type": "string", "enum": ["1d", "1w", "1m", "3m", "6m", "ytd", "1y"], "default": "1d"}}, []),
 ]
+
+
+_INT_ARGS = {"days", "top_n", "years", "top", "limit"}
+_NUM_ARGS = {"amount", "monthly_amount"}
+_STR_ARGS = {"ticker", "ticker_a", "ticker_b", "symbol", "benchmark", "metric", "window", "order", "sort_by",
+             "start_date", "end_date", "category", "min_impact", "type_filter"}
+
+
+def clean_args(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Coerce what a model sends into the types the tools expect; drop what cannot be coerced."""
+    out: Dict[str, Any] = {}
+    for k, v in args.items():
+        if v is None:
+            continue
+        try:
+            if k in _INT_ARGS:
+                out[k] = int(float(v))
+            elif k in _NUM_ARGS:
+                out[k] = float(v)
+            elif k in _STR_ARGS:
+                if isinstance(v, (str, int, float)):
+                    out[k] = str(v).strip()
+            elif k == "tickers":
+                items = [v] if isinstance(v, str) else v
+                out[k] = [str(x).strip() for x in items if isinstance(x, (str, int)) and str(x).strip()]
+            elif k == "weights":
+                if isinstance(v, dict):
+                    out[k] = {str(a): float(b) for a, b in v.items()}
+            else:
+                out[k] = v
+        except (TypeError, ValueError, OverflowError):
+            continue
+    return out
 
 
 def _compact(result: Any) -> str:
@@ -231,6 +299,13 @@ class ToolRunner:
             "watchlist_fund_changes": lambda days=90: d.watchlist_fund_changes(uid, days),
             "get_fund_managers": lambda ticker=None, days=365: d.fund_managers(uid, ticker, days),
             "market_overview": lambda window="1d": d.market_overview(window),
+            "get_performance": lambda ticker, start_date=None, end_date=None, amount=None, monthly_amount=None,
+                benchmark="SPY": d.performance(uid, ticker, start_date, end_date, amount, monthly_amount, benchmark),
+            "get_calendar_returns": lambda ticker, years=10, benchmark="SPY": d.calendar_returns(uid, ticker, years, benchmark),
+            "get_drawdowns": lambda ticker, days=1825, top=5: d.drawdowns(uid, ticker, days, top),
+            "watchlist_correlation": lambda tickers=None, days=365: d.watchlist_correlation(uid, tickers, days),
+            "portfolio_exposure": lambda tickers=None, weights=None, top_n=15:
+                d.portfolio_exposure(uid, tickers, weights, top_n),
             # older names, still accepted if a model or a saved conversation uses them
             "get_etf_profile": lambda ticker: d.fund_profile(uid, ticker),
             "get_etf_holdings": lambda ticker, top_n=10: d.fund_holdings(uid, ticker, top_n),
@@ -262,14 +337,15 @@ class ToolRunner:
             result = {"ok": False, "reason": "unknown_tool", "message": f"No tool named {name}."}
         else:
             allowed = fn.__code__.co_varnames[:fn.__code__.co_argcount]
-            args = {k: v for k, v in args.items() if k in allowed and v is not None}
+            args = clean_args({k: v for k, v in args.items() if k in allowed and v is not None})
             # A ranking of a named set must not fall back to the watchlist's top 10.
-            if name in ("rank_watchlist", "compare_funds") and not args.get("tickers") and len(self.named) >= 2:
+            if name in ("rank_watchlist", "compare_funds", "watchlist_correlation", "portfolio_exposure") and not args.get("tickers") and len(self.named) >= 2:
                 args["tickers"] = self.named
             try:
                 result = fn(**args)
             except TypeError as e:
-                result = {"ok": False, "reason": "bad_arguments", "message": str(e)}
+                result = {"ok": False, "reason": "bad_arguments",
+                          "message": "Missing or invalid arguments for " + name + ": " + str(e).split(")", 1)[-1].strip()}
             except Exception as e:
                 log.exception("[tools] %s crashed", name)
                 result = {"ok": False, "reason": "tool_error", "message": f"{name} failed: {e}"}

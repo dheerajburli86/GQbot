@@ -77,7 +77,7 @@ TODAY = date(2026, 10, 16)
 
 
 def _iso_days_ago(n):
-    return (datetime.now(timezone.utc) - timedelta(days=n)).isoformat()
+    return (datetime(TODAY.year, TODAY.month, TODAY.day, 12, tzinfo=timezone.utc) - timedelta(days=n)).isoformat()
 
 
 def series(start, n, drift=0.001, wiggle=0.01, volume=1_000_000, end=TODAY):

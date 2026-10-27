@@ -27,26 +27,42 @@ TELEGRAM_LIMIT = 4000  # Telegram's hard cap is 4096; leave headroom
 NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 HELP = (
-    "I'm GQ bot. Ask me anything about the US stocks and ETFs on your GQ FinXray watchlist, "
-    "and I'll combine FinXray's news, filings and alerts with the heatmap dashboard's price data.\n\n"
+    "I'm GQ bot. Ask me anything about the US stocks, ETFs and mutual funds on your GQ FinXray watchlist, "
+    "and I'll combine FinXray's news, filings and fund data with the heatmap dashboard's prices, "
+    "fundamentals and indicators.\n\n"
     "Try:\n"
-    "- Why is NVDA down this week?\n"
-    "- What happened to AAPL this month?\n"
-    "- How has SPY done YTD vs QQQ?\n"
-    "- Any recent filings or insider trades for MSFT?\n"
-    "- Top holdings of QQQ, and did anything change?\n"
+    "- Why is QQQ down this week? What drove it?\n"
+    "- What if I had put $10,000 in VOO in January 2023?\n"
+    "- Year-by-year returns of SPY, and its worst drawdown\n"
+    "- How diversified is my watchlist? Which holdings move together?\n"
+    "- What do my funds hold in total? Am I doubling up?\n"
+    "- Which of my funds hold NVDA? How much do FCNTX and QQQ overlap?\n"
+    "- Cheapest funds by expense ratio; any manager changes this year?\n"
+    "- Technical view on SPY: trend, RSI, MACD, 52-week range\n"
     "- Is MSFT expensive vs its peers? How healthy is its balance sheet?\n"
-    "- Technical view on SPY: trend, RSI, 52-week range\n"
-    "- Which of my holdings did best this year? Which look most oversold?\n"
-    "- How much do VOO and QQQ overlap? Which of my ETFs hold NVDA?\n"
+    "- How is the market today? Which sectors lead?\n"
     "- Chart XLK vs XLE over the last year\n\n"
-    "Commands:\n"
+    "Shortcuts:\n"
+    "/brief - today's briefing on the market and your watchlist\n"
+    "/portfolio - combined holdings, sector mix and overlap of your funds\n"
+    "/risk - diversification and risk across your holdings\n"
+    "/changes - recent holdings and manager changes in your funds\n"
     "/watchlist - what I can answer about\n"
     "/reset - start a fresh conversation\n"
     "/help - this message\n\n"
     "Add or remove tickers in the GQ FinXray bot with /add and /remove. "
     "I describe what the data shows; I don't give buy or sell advice."
 )
+
+SHORTCUTS = {
+    "brief": "Give me today's briefing: how the market is doing and which sectors lead, how my watchlist "
+             "moved, and anything high-impact from FinXray in the last week.",
+    "portfolio": "What do my funds hold in total? Show the biggest combined holdings, the names several of my "
+                 "funds repeat, and the combined sector mix.",
+    "risk": "How diversified is my watchlist? Show which holdings move together, which are the best "
+            "diversifiers, and rank my holdings by volatility.",
+    "changes": "Which of my funds changed their holdings recently, and have any fund managers changed?",
+}
 
 
 def split_message(text: str, limit: int = TELEGRAM_LIMIT) -> List[str]:
@@ -125,7 +141,18 @@ class TelegramFrontEnd:
             await update.message.reply_text(part)
 
     async def question(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        if not self._private(update) or not update.message or not update.message.text:
+        if not update.message or not update.message.text:
+            return
+        await self._ask(update, context, update.message.text)
+
+    def shortcut(self, key: str):
+        async def handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+            if update.message:
+                await self._ask(update, context, SHORTCUTS[key])
+        return handler
+
+    async def _ask(self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+        if not self._private(update):
             return
         chat = update.effective_chat.id
         ok, why = self.limiter.check(chat)
@@ -157,7 +184,7 @@ class TelegramFrontEnd:
         await send_typing()
         pulse = asyncio.create_task(keep_typing())
         try:
-            ans = await asyncio.to_thread(self.bot.answer, chat, update.message.text, username)
+            ans = await asyncio.to_thread(self.bot.answer, chat, text, username)
         finally:
             stop.set()
             await pulse
@@ -184,6 +211,8 @@ def build_application(bot: GQBot, token: str, limiter: RateLimiter) -> Applicati
     app.add_handler(CommandHandler("reset", fe.reset))
     app.add_handler(CommandHandler("watchlist", fe.watchlist))
     app.add_handler(CommandHandler("version", fe.version))
+    for key in SHORTCUTS:
+        app.add_handler(CommandHandler(key, fe.shortcut(key)))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, fe.question))
     app.add_error_handler(fe.on_error)
     return app

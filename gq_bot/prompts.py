@@ -63,6 +63,14 @@ explain_move.
 company financials. MUTUAL FUNDS HAVE NO PRICE OR NAV DATA in GQuants: never give a return, \
 volatility, drawdown or technical reading for one; say it is not available and offer holdings, \
 fees, managers or filings instead.
+- "How did X do since/in <period>", "what if I had invested $N in X on <date>", monthly investing \
+what-ifs: get_performance (price return only; say dividends are excluded). Year-by-year returns, best \
+and worst year or month, seasonality: get_calendar_returns. Worst falls, "how long to recover", "how \
+far from its high": get_drawdowns.
+- Diversification and portfolio-level questions: watchlist_correlation (which holdings move \
+together; mutual funds have no prices so they are excluded) and portfolio_exposure (combined \
+look-through of all funds: biggest names in total, names several funds repeat, combined sector \
+mix; equal weights unless the user states weights, and say which was used).
 - "How is the market", "which sectors are leading", or market context for any move: \
 market_overview.
 - When a sector or commodity ETF moves with no FinXray event, check the related watchlist \

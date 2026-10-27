@@ -39,6 +39,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from . import analysis, financials as fin, technicals as tech
 
 from .funds import FundsMixin
+from .portfolio import PortfolioMixin
 
 log = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ def net_holding_changes(rows: List[Dict[str, Any]], top: int = 25) -> Dict[str, 
             "tracked_from": str(rows[0].get("detected_at"))[:10] if rows else None}
 
 
-class GQData(FundsMixin):
+class GQData(FundsMixin, PortfolioMixin):
     BENCH = BENCHMARKS
 
     def __init__(self, finxray, heatmap=None, clock: Callable[[], float] = time.monotonic,
@@ -718,6 +719,11 @@ class GQData(FundsMixin):
                 break
         return out
 
+    def _now(self) -> datetime:
+        """'Now' from the injected calendar (end of that UTC day), never the wall clock."""
+        d = self.today()
+        return datetime(d.year, d.month, d.day, 23, 59, 59, tzinfo=timezone.utc)
+
     def _dt_window(self, days, start_date, end_date, default_days):
         start, end = self._window(days, start_date, end_date, default_days)
         s = datetime(start.year, start.month, start.day, tzinfo=timezone.utc)
@@ -732,7 +738,7 @@ class GQData(FundsMixin):
             return no
         days = max(1, min(int(days or 14), MAX_EVENT_DAYS))
         s, e = self._dt_window(days, start_date, end_date, 14)
-        now = datetime.now(timezone.utc)
+        now = self._now()
         if s < now - timedelta(days=MAX_EVENT_DAYS):
             s = now - timedelta(days=MAX_EVENT_DAYS)
         return self._safe("FinXray events", lambda: {
@@ -883,7 +889,7 @@ class GQData(FundsMixin):
             for x in rows:
                 if x["type"] == "stock":
                     sectors[x["sector"] or "Unknown"] = sectors.get(x["sector"] or "Unknown", 0) + 1
-            since = datetime.now(timezone.utc) - timedelta(days=7)
+            since = self._now() - timedelta(days=7)
             covered = list(insts)
             hi = []
             for i in range(0, len(covered), CHUNK):
@@ -1138,7 +1144,7 @@ class GQData(FundsMixin):
     def watchlist_etf_changes(self, user_id, days: int = 90) -> Dict[str, Any]:
         """Net holdings changes for every ETF on the watchlist, one row per ETF."""
         days = max(1, min(int(days or 90), MAX_EVENT_DAYS))
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = self._now() - timedelta(days=days)
 
         def run():
             etfs = [t for t, i in self._instruments_for(self.watchlist(user_id)).items()
@@ -1172,7 +1178,7 @@ class GQData(FundsMixin):
         if no:
             return no
         days = max(1, min(int(days), MAX_EVENT_DAYS))
-        since = datetime.now(timezone.utc) - timedelta(days=days)
+        since = self._now() - timedelta(days=days)
 
         def changes():
             return net_holding_changes(self._change_rows([t], since)[t])

@@ -171,3 +171,12 @@ def test_exchange_suffixed_tickers_are_not_turned_into_links():
     out = A.plain_text("Added National Bank of Greece (ETE.AT) and Sun Pharma (SUNPHARMA.BO); US-listed BRK.B too.")
     assert "ETE.\u200bAT" in out and "SUNPHARMA.\u200bBO" in out and "BRK.B" in out
     assert out.replace("\u200b", "") == "Added National Bank of Greece (ETE.AT) and Sun Pharma (SUNPHARMA.BO); US-listed BRK.B too."
+
+
+def test_dollar_amounts_are_checked_numerically_with_rounding_allowed():
+    from gq_bot.agent import unsourced_figures
+    src = ['{"lump_sum":{"invested":10000.0,"value_now":13250.55}}', "what if I put $10,000 in qqq"]
+    assert unsourced_figures("Your $10,000 would now be $13,250.55.", src) == []
+    assert unsourced_figures("That is about $13,251 today.", src) == []
+    assert unsourced_figures("It would be worth $14,000.", src) == ["$14,000"]
+    assert unsourced_figures("Market cap is $1.23B and price $181.00.", ['{"market_cap":1234567890,"p":181.0}']) == []

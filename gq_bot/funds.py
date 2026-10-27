@@ -20,6 +20,7 @@ mutual fund's holdings are always "as of" a reporting date that must be stated.
 
 from __future__ import annotations
 
+import json
 import re
 import statistics
 from datetime import date, timedelta
@@ -41,6 +42,29 @@ ASSET_CATEGORY = {"EC": "equity", "EP": "preferred equity", "DBT": "debt", "STIV
                   "ABS-CBDO": "CDO/CBO", "ABS-APCP": "asset-backed CP", "COMM": "commodity", "OTHER": "other"}
 COMPARE_METRICS = ("net_expense_ratio", "management_fee", "aum", "holdings_count", "top10_weight_pct",
                    "longest_manager_tenure_years", "ret_1y", "ret_5y")
+
+
+def weight_rows(xs, field: str) -> List[Dict[str, Any]]:
+    """A JSONB weight column as [{name, weight_pct}]: it may be a list of objects, a {name: weight}
+    mapping or a JSON string, so accept all three."""
+    if isinstance(xs, str):
+        try:
+            xs = json.loads(xs)
+        except ValueError:
+            return []
+    rows: List[Dict[str, Any]] = []
+    if isinstance(xs, dict):
+        rows = [{"name": k, "weight_pct": _num(v)} for k, v in xs.items()]
+    elif isinstance(xs, list):
+        for x in xs:
+            if not isinstance(x, dict):
+                continue
+            name = x.get(field) or x.get("name") or x.get("label")
+            w = next((x[k] for k in ("weight", "weight_pct", "pct", "value") if x.get(k) is not None), None)
+            rows.append({"name": name, "weight_pct": _num(w)})
+    rows = [r for r in rows if r["name"] and r["weight_pct"] is not None]
+    rows.sort(key=lambda r: -r["weight_pct"])
+    return rows
 
 
 def _num(v) -> Optional[float]:
@@ -201,8 +225,7 @@ class FundsMixin:
             cd = self._rows(self.fx.table("etf_company_data").select("sector_weights, country_weights, top_country")
                             .eq("ticker", t).limit(1))
             cd = cd[0] if cd else {}
-            pick = lambda xs, f: [{"name": x.get(f), "weight_pct": _num(x.get("weight"))}
-                                  for x in (xs or [])[:12] if isinstance(x, dict)]
+            pick = lambda xs, f: weight_rows(xs, f)[:12]
             return {"by_sector": pick(cd.get("sector_weights"), "sector"),
                     "by_country": pick(cd.get("country_weights"), "country"),
                     "source": "fund provider sector and country weights"}

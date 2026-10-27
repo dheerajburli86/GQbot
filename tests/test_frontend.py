@@ -116,3 +116,15 @@ def test_logging_is_off_until_the_bots_own_project_is_configured(monkeypatch):
     assert make_bot_client(Settings()) is None
     monkeypatch.setenv("BOT_SUPABASE_URL", "https://x.supabase.co")
     assert Settings().bot_url == "https://x.supabase.co" and make_bot_client(Settings()) is None  # key still missing
+
+
+def test_shortcut_commands_ask_a_canned_question_and_are_private_only():
+    from gq_bot.telegram_app import SHORTCUTS
+    assert set(SHORTCUTS) == {"brief", "portfolio", "risk", "changes"} and all(f"/{k}" in HELP for k in SHORTCUTS)
+    fe = frontend([say("Briefing text.")])
+    up = stub_update("/brief")
+    asyncio.run(fe.shortcut("brief")(up, SimpleNamespace(bot=StubBot())))
+    assert up.message.replies == ["Briefing text."]
+    grp = stub_update("/brief", chat_type="group")
+    asyncio.run(fe.shortcut("brief")(grp, SimpleNamespace(bot=StubBot())))
+    assert grp.message.replies == []
